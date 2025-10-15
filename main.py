@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import garth
-from garth.auth_tokens import OAuth2Token
+from garth.auth_tokens import OAuth2Token, OAuth1Token
 import os
 import re
 import time
@@ -185,18 +185,31 @@ class WorkoutParser:
 
 def authenticate_garmin():
     """Authenticate with Garmin using OAuth tokens from environment variables"""
+    # OAuth2 tokens
     access_token = os.getenv("GARMIN_OAUTH_ACCESS_TOKEN")
     refresh_token = os.getenv("GARMIN_OAUTH_REFRESH_TOKEN")
+    
+    # OAuth1 tokens (needed for API calls)
+    oauth1_token = os.getenv("GARMIN_OAUTH1_TOKEN")
+    oauth1_token_secret = os.getenv("GARMIN_OAUTH1_TOKEN_SECRET")
     
     if not access_token or not refresh_token:
         raise HTTPException(
             status_code=500, 
-            detail="OAuth tokens not configured. Please set GARMIN_OAUTH_ACCESS_TOKEN and GARMIN_OAUTH_REFRESH_TOKEN environment variables."
+            detail="OAuth2 tokens not configured. Please set GARMIN_OAUTH_ACCESS_TOKEN and GARMIN_OAUTH_REFRESH_TOKEN environment variables."
+        )
+    
+    if not oauth1_token or not oauth1_token_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="OAuth1 tokens not configured. Please set GARMIN_OAUTH1_TOKEN and GARMIN_OAUTH1_TOKEN_SECRET environment variables."
         )
     
     try:
-        # Create token dictionary that matches what garth expects
-        token_dict = {
+        # Create OAuth2 token
+        from garth.auth_tokens import OAuth1Token
+        
+        oauth2_dict = {
             'access_token': access_token,
             'refresh_token': refresh_token,
             'token_type': 'Bearer',
@@ -210,18 +223,23 @@ def authenticate_garmin():
             'refresh_expired': False
         }
         
-        # Create OAuth2Token object from dict
-        oauth_token = OAuth2Token(**token_dict)
+        oauth2_token = OAuth2Token(**oauth2_dict)
+        garth.client.oauth2_token = oauth2_token
         
-        # Set it on the garth client
-        garth.client.oauth2_token = oauth_token
+        # Create OAuth1 token
+        oauth1_token_obj = OAuth1Token(
+            oauth_token=oauth1_token,
+            oauth_token_secret=oauth1_token_secret
+        )
+        garth.client.oauth1_token = oauth1_token_obj
         
-        # Make sure domain is set
+        # Set domain and configure
         if not garth.client.domain:
             garth.client.domain = "garmin.com"
         
-        # Configure the client
         garth.client.configure()
+        
+        print("✅ Both OAuth1 and OAuth2 tokens configured!")
         
     except Exception as e:
         raise HTTPException(
