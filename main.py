@@ -21,8 +21,6 @@ app.add_middleware(
 
 class WorkoutRequest(BaseModel):
     workout_text: str
-    garmin_email: str
-    garmin_password: str
     workout_name: Optional[str] = None
 
 class WorkoutParser:
@@ -183,6 +181,27 @@ class WorkoutParser:
                 "targetType": step_data['target_type']
             }
 
+def authenticate_garmin():
+    """Authenticate with Garmin using OAuth tokens from environment variables"""
+    access_token = os.getenv("GARMIN_OAUTH_ACCESS_TOKEN")
+    refresh_token = os.getenv("GARMIN_OAUTH_REFRESH_TOKEN")
+    
+    if not access_token or not refresh_token:
+        raise HTTPException(
+            status_code=500, 
+            detail="OAuth tokens not configured. Please set GARMIN_OAUTH_ACCESS_TOKEN and GARMIN_OAUTH_REFRESH_TOKEN environment variables."
+        )
+    
+    # Set the OAuth tokens directly on the garth client
+    garth.client.oauth2_token = type('OAuth2Token', (), {
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'expired': False
+    })()
+    
+    # Configure the client
+    garth.client.configure()
+
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     """Serve the beautiful web interface"""
@@ -222,7 +241,7 @@ def read_root():
             font-weight: 600;
             font-size: 14px;
         }
-        input, textarea {
+        textarea {
             width: 100%;
             padding: 12px 15px;
             border: 2px solid #e0e0e0;
@@ -230,12 +249,13 @@ def read_root():
             font-size: 16px;
             transition: border-color 0.3s;
             font-family: inherit;
+            resize: vertical;
+            min-height: 100px;
         }
-        input:focus, textarea:focus {
+        textarea:focus {
             outline: none;
             border-color: #667eea;
         }
-        textarea { resize: vertical; min-height: 100px; }
         .btn {
             width: 100%;
             padding: 15px;
@@ -328,22 +348,12 @@ def read_root():
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .remember-me {
-            display: flex;
-            align-items: center;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-        .remember-me input {
-            width: auto;
-            margin-right: 8px;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🏃‍♂️ Garmin Workout Creator</h1>
-        <p class="subtitle">Create workouts in natural language</p>
+        <p class="subtitle">Create workouts in natural language - No login needed!</p>
         
         <form id="workoutForm">
             <div class="form-group">
@@ -353,31 +363,6 @@ def read_root():
                     placeholder="e.g., 10 min warmup, 5x(800m, 400m easy), 10 min cooldown"
                     required
                 ></textarea>
-            </div>
-            
-            <div class="form-group">
-                <label for="email">Garmin Email</label>
-                <input 
-                    type="email" 
-                    id="email" 
-                    placeholder="your-email@example.com"
-                    required
-                >
-            </div>
-            
-            <div class="form-group">
-                <label for="password">Garmin Password</label>
-                <input 
-                    type="password" 
-                    id="password" 
-                    placeholder="Your password"
-                    required
-                >
-            </div>
-            
-            <div class="remember-me">
-                <input type="checkbox" id="remember">
-                <label for="remember" style="margin-bottom: 0; font-weight: normal;">Remember credentials (stored locally)</label>
             </div>
             
             <button type="submit" class="btn" id="submitBtn">
@@ -404,20 +389,6 @@ def read_root():
     <script>
         const API_URL = window.location.origin + '/create-workout';
         
-        // Load saved credentials
-        window.addEventListener('DOMContentLoaded', () => {
-            const savedEmail = localStorage.getItem('garmin_email');
-            const savedPassword = localStorage.getItem('garmin_password');
-            
-            if (savedEmail) {
-                document.getElementById('email').value = savedEmail;
-                document.getElementById('remember').checked = true;
-            }
-            if (savedPassword) {
-                document.getElementById('password').value = savedPassword;
-            }
-        });
-        
         function fillExample(text) {
             document.getElementById('workout').value = text;
         }
@@ -426,18 +397,6 @@ def read_root():
             e.preventDefault();
             
             const workout = document.getElementById('workout').value;
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const remember = document.getElementById('remember').checked;
-            
-            // Save credentials if remember is checked
-            if (remember) {
-                localStorage.setItem('garmin_email', email);
-                localStorage.setItem('garmin_password', password);
-            } else {
-                localStorage.removeItem('garmin_email');
-                localStorage.removeItem('garmin_password');
-            }
             
             // Show loader
             document.getElementById('loader').classList.add('active');
@@ -451,9 +410,7 @@ def read_root():
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        workout_text: workout,
-                        garmin_email: email,
-                        garmin_password: password
+                        workout_text: workout
                     })
                 });
                 
@@ -506,7 +463,7 @@ def health_check():
 @app.post("/create-workout")
 async def create_workout(request: WorkoutRequest):
     """
-    Create a Garmin workout from natural language text
+    Create a Garmin workout from natural language text using OAuth tokens
     
     Example workout_text:
     - "10 min warmup, 5x(800m @ 5k pace, 400m easy), 10 min cooldown"
@@ -515,8 +472,8 @@ async def create_workout(request: WorkoutRequest):
     """
     
     try:
-        # Login to Garmin
-        garth.login(request.garmin_email, request.garmin_password)
+        # Authenticate using OAuth tokens from environment
+        authenticate_garmin()
         
         # Parse the workout text
         parser = WorkoutParser()
