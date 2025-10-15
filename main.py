@@ -185,6 +185,8 @@ class WorkoutParser:
 
 def authenticate_garmin():
     """Authenticate with Garmin using OAuth tokens from environment variables"""
+    print("Starting authentication...")
+    
     # OAuth2 tokens
     access_token = os.getenv("GARMIN_OAUTH_ACCESS_TOKEN")
     refresh_token = os.getenv("GARMIN_OAUTH_REFRESH_TOKEN")
@@ -193,19 +195,29 @@ def authenticate_garmin():
     oauth1_token = os.getenv("GARMIN_OAUTH1_TOKEN")
     oauth1_token_secret = os.getenv("GARMIN_OAUTH1_TOKEN_SECRET")
     
+    print(f"OAuth2 Access Token present: {bool(access_token)}")
+    print(f"OAuth2 Refresh Token present: {bool(refresh_token)}")
+    print(f"OAuth1 Token present: {bool(oauth1_token)}")
+    print(f"OAuth1 Secret present: {bool(oauth1_token_secret)}")
+    
     if not access_token or not refresh_token:
+        error_msg = "OAuth2 tokens not configured. Please set GARMIN_OAUTH_ACCESS_TOKEN and GARMIN_OAUTH_REFRESH_TOKEN environment variables."
+        print(f"ERROR: {error_msg}")
         raise HTTPException(
             status_code=500, 
-            detail="OAuth2 tokens not configured. Please set GARMIN_OAUTH_ACCESS_TOKEN and GARMIN_OAUTH_REFRESH_TOKEN environment variables."
+            detail=error_msg
         )
     
     if not oauth1_token or not oauth1_token_secret:
+        error_msg = "OAuth1 tokens not configured. Please set GARMIN_OAUTH1_TOKEN and GARMIN_OAUTH1_TOKEN_SECRET environment variables."
+        print(f"ERROR: {error_msg}")
         raise HTTPException(
             status_code=500,
-            detail="OAuth1 tokens not configured. Please set GARMIN_OAUTH1_TOKEN and GARMIN_OAUTH1_TOKEN_SECRET environment variables."
+            detail=error_msg
         )
     
     try:
+        print("Creating OAuth tokens...")
         # Create OAuth2 token
         from garth.auth_tokens import OAuth1Token
         
@@ -223,28 +235,37 @@ def authenticate_garmin():
             'refresh_expired': False
         }
         
+        print("Creating OAuth2 token object...")
         oauth2_token = OAuth2Token(**oauth2_dict)
         garth.client.oauth2_token = oauth2_token
+        print("✅ OAuth2 token set")
         
         # Create OAuth1 token
+        print("Creating OAuth1 token object...")
         oauth1_token_obj = OAuth1Token(
             oauth_token=oauth1_token,
             oauth_token_secret=oauth1_token_secret
         )
         garth.client.oauth1_token = oauth1_token_obj
+        print("✅ OAuth1 token set")
         
         # Set domain and configure
         if not garth.client.domain:
             garth.client.domain = "garmin.com"
         
+        print("Configuring client...")
         garth.client.configure()
         
         print("✅ Both OAuth1 and OAuth2 tokens configured!")
         
     except Exception as e:
+        error_msg = f"Failed to authenticate with Garmin: {str(e)}"
+        print(f"ERROR during token setup: {error_msg}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to authenticate with Garmin: {str(e)}"
+            detail=error_msg
         )
 
 @app.get("/", response_class=HTMLResponse)
