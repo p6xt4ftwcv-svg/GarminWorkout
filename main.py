@@ -3,8 +3,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import garth
+from garth.auth_tokens import OAuth2Token
 import os
 import re
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -192,14 +194,21 @@ def authenticate_garmin():
             detail="OAuth tokens not configured. Please set GARMIN_OAUTH_ACCESS_TOKEN and GARMIN_OAUTH_REFRESH_TOKEN environment variables."
         )
     
-    # Set the OAuth tokens directly on the garth client
-    garth.client.oauth2_token = type('OAuth2Token', (), {
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'expired': False
-    })()
+    # Create a proper OAuth2Token object
+    oauth_token = OAuth2Token(
+        scope="",
+        jti="",
+        token_type="Bearer",
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=3600,
+        expires_at=int(time.time()) + 3600,
+        refresh_token_expires_in=2592000,
+        refresh_token_expires_at=int(time.time()) + 2592000
+    )
     
-    # Configure the client
+    # Set it on the garth client
+    garth.client.oauth2_token = oauth_token
     garth.client.configure()
 
 @app.get("/", response_class=HTMLResponse)
