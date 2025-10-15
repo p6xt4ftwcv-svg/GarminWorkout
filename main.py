@@ -256,14 +256,14 @@ def authenticate_garmin():
         
         oauth2_token = OAuth2Token(**oauth2_dict)
         garth.client.oauth2_token = oauth2_token
-        print("✅ OAuth2 token set")
+        print("✅ OAuth2 token set on garth")
         
         oauth1_token_obj = OAuth1Token(
             oauth_token=oauth1_token,
             oauth_token_secret=oauth1_token_secret
         )
         garth.client.oauth1_token = oauth1_token_obj
-        print("✅ OAuth1 token set")
+        print("✅ OAuth1 token set on garth")
         
         if not garth.client.domain:
             garth.client.domain = "garmin.com"
@@ -271,9 +271,8 @@ def authenticate_garmin():
         garth.client.configure()
         print("✅ Garth configured")
         
-        # Now create Garmin client using garth
-        client = Garmin()
-        # The Garmin client will use the configured garth tokens automatically
+        # Now create Garmin client and give it our configured garth
+        client = Garmin(garth=garth.client)
         
         print("✅ Garmin client created!")
         return client
