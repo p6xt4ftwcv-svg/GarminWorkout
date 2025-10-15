@@ -519,7 +519,7 @@ async def create_workout(request: WorkoutRequest):
         
         # Create workout in Garmin Connect
         print("Sending to Garmin...")
-        response = garth.post(
+        response = garth.client.post(
             "workout-service/workout",
             api=True,
             json=workout_json
