@@ -7,6 +7,7 @@ from garth.auth_tokens import OAuth2Token, OAuth1Token
 import os
 import re
 import time
+import json
 from datetime import datetime
 from typing import Optional
 
@@ -558,30 +559,58 @@ async def create_workout(request: WorkoutRequest):
         
         # Create workout in Garmin Connect
         print("Sending to Garmin...")
-        response = garth.client.connectapi(
-            "/workout-service/workout",
-            method="POST",
-            json=workout_json
-        )
-        print(f"Garmin response: {response}")
-        print(f"Response type: {type(response)}")
+        print(f"Workout JSON being sent: {json.dumps(workout_json, indent=2)}")
         
-        # Check if response is valid
-        if response and isinstance(response, dict):
-            workout_id = response.get("workoutId")
-            print(f"Workout ID: {workout_id}")
-        else:
-            print("Warning: Garmin returned unexpected response format")
-            workout_id = None
-        
-        return {
-            "success": True,
-            "message": "Workout created successfully!",
-            "workout_name": workout_json["workoutName"],
-            "workout_id": workout_id,
-            "parsed_workout": workout_json,
-            "garmin_response": response
-        }
+        try:
+            # Try the workout creation endpoint
+            response = garth.client.connectapi(
+                "/workout-service/workout",
+                method="POST",
+                json=workout_json
+            )
+            print(f"Garmin response: {response}")
+            print(f"Response type: {type(response)}")
+            
+            # Check if response is valid
+            if response and isinstance(response, dict):
+                workout_id = response.get("workoutId")
+                print(f"✅ Workout ID: {workout_id}")
+                return {
+                    "success": True,
+                    "message": "Workout created successfully!",
+                    "workout_name": workout_json["workoutName"],
+                    "workout_id": workout_id,
+                    "parsed_workout": workout_json,
+                    "garmin_response": response
+                }
+            elif isinstance(response, list) and len(response) == 0:
+                # Empty list response - this might mean the workout was created but no ID returned
+                # Let's try to fetch recent workouts to see if it's there
+                print("⚠️ Got empty response - workout may have been created without ID")
+                return {
+                    "success": True,
+                    "message": "Workout sent to Garmin (no confirmation ID received)",
+                    "workout_name": workout_json["workoutName"],
+                    "workout_id": None,
+                    "parsed_workout": workout_json,
+                    "garmin_response": response,
+                    "note": "Check Garmin Connect app - workout may have been created"
+                }
+            else:
+                print(f"⚠️ Unexpected response format: {response}")
+                return {
+                    "success": False,
+                    "message": "Unexpected response from Garmin",
+                    "workout_name": workout_json["workoutName"],
+                    "garmin_response": response
+                }
+                
+        except Exception as api_error:
+            print(f"❌ API call failed: {str(api_error)}")
+            print(f"Error type: {type(api_error)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
         
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {str(e)}")
