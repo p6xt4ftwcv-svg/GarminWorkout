@@ -520,17 +520,18 @@ async def create_workout(request: WorkoutRequest):
         # Create workout in Garmin Connect
         print("Sending to Garmin...")
         response = garth.client.post(
-            "workout-service/workout",
+            "/workout-service/workout",
             api=True,
             json=workout_json
         )
-        print(f"Garmin response: {response}")
+        response_data = response.json() if hasattr(response, 'json') else response
+        print(f"Garmin response: {response_data}")
         
         return {
             "success": True,
             "message": "Workout created successfully!",
             "workout_name": workout_json["workoutName"],
-            "workout_id": response.get("workoutId"),
+            "workout_id": response_data.get("workoutId") if isinstance(response_data, dict) else None,
             "parsed_workout": workout_json
         }
         
