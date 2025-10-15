@@ -564,13 +564,23 @@ async def create_workout(request: WorkoutRequest):
             json=workout_json
         )
         print(f"Garmin response: {response}")
+        print(f"Response type: {type(response)}")
+        
+        # Check if response is valid
+        if response and isinstance(response, dict):
+            workout_id = response.get("workoutId")
+            print(f"Workout ID: {workout_id}")
+        else:
+            print("Warning: Garmin returned unexpected response format")
+            workout_id = None
         
         return {
             "success": True,
             "message": "Workout created successfully!",
             "workout_name": workout_json["workoutName"],
-            "workout_id": response.get("workoutId") if isinstance(response, dict) else None,
-            "parsed_workout": workout_json
+            "workout_id": workout_id,
+            "parsed_workout": workout_json,
+            "garmin_response": response
         }
         
     except Exception as e:
