@@ -194,22 +194,40 @@ def authenticate_garmin():
             detail="OAuth tokens not configured. Please set GARMIN_OAUTH_ACCESS_TOKEN and GARMIN_OAUTH_REFRESH_TOKEN environment variables."
         )
     
-    # Create a proper OAuth2Token object
-    oauth_token = OAuth2Token(
-        scope="",
-        jti="",
-        token_type="Bearer",
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=3600,
-        expires_at=int(time.time()) + 3600,
-        refresh_token_expires_in=2592000,
-        refresh_token_expires_at=int(time.time()) + 2592000
-    )
-    
-    # Set it on the garth client
-    garth.client.oauth2_token = oauth_token
-    garth.client.configure()
+    try:
+        # Create token dictionary that matches what garth expects
+        token_dict = {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+            'expires_at': int(time.time()) + 3600,
+            'refresh_token_expires_in': 2592000,
+            'refresh_token_expires_at': int(time.time()) + 2592000,
+            'scope': '',
+            'jti': '',
+            'expired': False,
+            'refresh_expired': False
+        }
+        
+        # Create OAuth2Token object from dict
+        oauth_token = OAuth2Token(**token_dict)
+        
+        # Set it on the garth client
+        garth.client.oauth2_token = oauth_token
+        
+        # Make sure domain is set
+        if not garth.client.domain:
+            garth.client.domain = "garmin.com"
+        
+        # Configure the client
+        garth.client.configure()
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to authenticate with Garmin: {str(e)}"
+        )
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -481,23 +499,32 @@ async def create_workout(request: WorkoutRequest):
     """
     
     try:
+        print("Starting workout creation...")
+        print(f"Workout text: {request.workout_text}")
+        
         # Authenticate using OAuth tokens from environment
+        print("Authenticating with Garmin...")
         authenticate_garmin()
+        print("Authentication successful!")
         
         # Parse the workout text
+        print("Parsing workout...")
         parser = WorkoutParser()
         workout_json = parser.parse(request.workout_text)
+        print(f"Parsed workout: {workout_json}")
         
         # Override name if provided
         if request.workout_name:
             workout_json["workoutName"] = request.workout_name
         
         # Create workout in Garmin Connect
+        print("Sending to Garmin...")
         response = garth.post(
             "workout-service/workout",
             api=True,
             json=workout_json
         )
+        print(f"Garmin response: {response}")
         
         return {
             "success": True,
@@ -508,6 +535,9 @@ async def create_workout(request: WorkoutRequest):
         }
         
     except Exception as e:
+        print(f"ERROR: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
