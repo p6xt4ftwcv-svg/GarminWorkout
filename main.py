@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import garth
-from garth.auth_tokens import OAuth2Token, OAuth1Token
+from garminconnect import Garmin
 import os
 import re
 import time
@@ -235,9 +235,10 @@ def authenticate_garmin():
         )
     
     try:
-        print("Creating OAuth tokens...")
-        # Create OAuth2 token
-        from garth.auth_tokens import OAuth1Token
+        print("Creating Garmin client...")
+        
+        # Configure garth with tokens first
+        from garth.auth_tokens import OAuth2Token, OAuth1Token
         
         oauth2_dict = {
             'access_token': access_token,
@@ -253,13 +254,10 @@ def authenticate_garmin():
             'refresh_expired': False
         }
         
-        print("Creating OAuth2 token object...")
         oauth2_token = OAuth2Token(**oauth2_dict)
         garth.client.oauth2_token = oauth2_token
         print("✅ OAuth2 token set")
         
-        # Create OAuth1 token
-        print("Creating OAuth1 token object...")
         oauth1_token_obj = OAuth1Token(
             oauth_token=oauth1_token,
             oauth_token_secret=oauth1_token_secret
@@ -267,14 +265,18 @@ def authenticate_garmin():
         garth.client.oauth1_token = oauth1_token_obj
         print("✅ OAuth1 token set")
         
-        # Set domain and configure
         if not garth.client.domain:
             garth.client.domain = "garmin.com"
         
-        print("Configuring client...")
         garth.client.configure()
+        print("✅ Garth configured")
         
-        print("✅ Both OAuth1 and OAuth2 tokens configured!")
+        # Now create Garmin client using garth
+        client = Garmin()
+        # The Garmin client will use the configured garth tokens automatically
+        
+        print("✅ Garmin client created!")
+        return client
         
     except Exception as e:
         error_msg = f"Failed to authenticate with Garmin: {str(e)}"
@@ -561,7 +563,7 @@ async def create_workout(request: WorkoutRequest):
         
         # Authenticate using OAuth tokens from environment
         print("Authenticating with Garmin...")
-        authenticate_garmin()
+        client = authenticate_garmin()
         print("Authentication successful!")
         
         # Parse the workout text
@@ -574,129 +576,38 @@ async def create_workout(request: WorkoutRequest):
         if request.workout_name:
             workout_json["workoutName"] = request.workout_name
         
-        # Create workout in Garmin Connect
+        # Create workout in Garmin Connect using the high-level API
         print("Sending to Garmin...")
-        print(f"Workout JSON being sent: {json.dumps(workout_json, indent=2)}")
+        print(f"Workout JSON: {json.dumps(workout_json, indent=2)}")
         
+        # Use the garminconnect library's method to add workout
+        response = client.garth.post(
+            "connectapi",
+            "/workout-service/workout",
+            api=True,
+            json=workout_json
+        )
+        
+        print(f"Garmin response: {response}")
+        
+        # Now try to fetch workouts to verify
+        print("Fetching workouts to verify...")
         try:
-            # Try POST first
-            print("Attempting POST request...")
-            http_response = garth.client.request(
-                "POST",
-                "connectapi",
-                "/workout-service/workout",
-                api=True,
-                json=workout_json
-            )
-            
-            print(f"HTTP Status Code: {http_response.status_code if hasattr(http_response, 'status_code') else 'N/A'}")
-            
-            # If we got a 405 (Method Not Allowed), try PUT
-            if hasattr(http_response, 'status_code') and http_response.status_code == 405:
-                print("POST not allowed, trying PUT...")
-                http_response = garth.client.request(
-                    "PUT",
-                    "connectapi",
-                    "/workout-service/workout",
-                    api=True,
-                    json=workout_json
-                )
-                print(f"PUT Status Code: {http_response.status_code}")
-            
-            print(f"HTTP Response Headers: {http_response.headers if hasattr(http_response, 'headers') else 'N/A'}")
-            
-            # Try to get JSON response
-            try:
-                response = http_response.json() if hasattr(http_response, 'json') else http_response
-            except:
-                response = http_response.text if hasattr(http_response, 'text') else str(http_response)
-                
-            print(f"Garmin response: {response}")
-            print(f"Response type: {type(response)}")
-            
-            # Check HTTP status
-            if hasattr(http_response, 'status_code'):
-                if http_response.status_code == 201:  # Created
-                    print("✅ HTTP 201 - Workout created!")
-                elif http_response.status_code == 200:  # OK
-                    print("✅ HTTP 200 - Request successful")
-                    
-                    # Try to verify the workout was created by fetching recent workouts
-                    try:
-                        print("Fetching recent workouts to verify...")
-                        
-                        # Try multiple endpoints
-                        endpoints_to_try = [
-                            "/workout-service/workouts",
-                            "/workout-service/workout",
-                            "/workouts",
-                        ]
-                        
-                        for endpoint in endpoints_to_try:
-                            try:
-                                print(f"  Trying endpoint: {endpoint}")
-                                verify_response = garth.client.request(
-                                    "GET",
-                                    "connectapi",
-                                    endpoint,
-                                    api=True
-                                )
-                                recent_workouts = verify_response.json() if hasattr(verify_response, 'json') else []
-                                print(f"  Response type: {type(recent_workouts)}, length: {len(recent_workouts) if isinstance(recent_workouts, (list, dict)) else 'N/A'}")
-                                
-                                if isinstance(recent_workouts, list) and len(recent_workouts) > 0:
-                                    print(f"✅ Found {len(recent_workouts)} workouts!")
-                                    for w in recent_workouts[:3]:
-                                        if isinstance(w, dict):
-                                            print(f"  - {w.get('workoutName', 'Unknown')} (ID: {w.get('workoutId', 'N/A')})")
-                                    break
-                                elif isinstance(recent_workouts, dict):
-                                    print(f"  Got dict response: {list(recent_workouts.keys())[:5]}")
-                            except Exception as e:
-                                print(f"  Endpoint {endpoint} failed: {str(e)[:100]}")
-                                
-                    except Exception as verify_error:
-                        print(f"Could not verify workout: {verify_error}")
-                else:
-                    print(f"⚠️ HTTP {http_response.status_code}")
-            
-            # Check if response is valid
-            if response and isinstance(response, dict):
-                workout_id = response.get("workoutId")
-                print(f"✅ Workout ID: {workout_id}")
-                return {
-                    "success": True,
-                    "message": "Workout created successfully!",
-                    "workout_name": workout_json["workoutName"],
-                    "workout_id": workout_id,
-                    "parsed_workout": workout_json,
-                    "garmin_response": response
-                }
-            elif isinstance(response, list) and len(response) == 0:
-                print("⚠️ Got empty list response")
-                return {
-                    "success": True,
-                    "message": "Workout sent to Garmin (empty response - check Garmin Connect)",
-                    "workout_name": workout_json["workoutName"],
-                    "workout_id": None,
-                    "parsed_workout": workout_json,
-                    "garmin_response": response
-                }
-            else:
-                print(f"⚠️ Unexpected response: {response}")
-                return {
-                    "success": True,
-                    "message": f"Request completed - response: {response}",
-                    "workout_name": workout_json["workoutName"],
-                    "garmin_response": response
-                }
-                
-        except Exception as api_error:
-            print(f"❌ API call failed: {str(api_error)}")
-            print(f"Error type: {type(api_error)}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
-            raise
+            workouts = client.get_workouts()
+            print(f"Found {len(workouts)} workouts in account")
+            if workouts:
+                for w in workouts[:3]:
+                    print(f"  - {w.get('workoutName', 'Unknown')}")
+        except Exception as e:
+            print(f"Could not fetch workouts: {e}")
+        
+        return {
+            "success": True,
+            "message": "Workout created successfully!",
+            "workout_name": workout_json["workoutName"],
+            "parsed_workout": workout_json,
+            "garmin_response": response
+        }
         
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {str(e)}")
