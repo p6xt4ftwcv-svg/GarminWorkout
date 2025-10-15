@@ -52,14 +52,12 @@ class WorkoutParser:
         workout = {
             "workoutName": workout_name,
             "sportType": {
-                "sportTypeId": 1,
-                "sportTypeKey": "running"
+                "sportTypeId": 1
             },
             "workoutSegments": [{
                 "segmentOrder": 1,
                 "sportType": {
-                    "sportTypeId": 1,
-                    "sportTypeKey": "running"
+                    "sportTypeId": 1
                 },
                 "workoutSteps": []
             }]
@@ -192,12 +190,6 @@ class WorkoutParser:
                 "durationValue": step_data['duration_value'],
                 "targetType": step_data['target_type']
             }
-            
-            # Add preferred unit
-            if step_data['duration_type'] == 'TIME':
-                step['preferredDurationUnit'] = 'SECOND'
-            elif step_data['duration_type'] == 'DISTANCE':
-                step['preferredDurationUnit'] = 'CENTIMETER'
             
             return step
 
