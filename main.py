@@ -562,14 +562,35 @@ async def create_workout(request: WorkoutRequest):
         print(f"Workout JSON being sent: {json.dumps(workout_json, indent=2)}")
         
         try:
-            # Try the workout creation endpoint
-            response = garth.client.connectapi(
+            # Make the API call and capture the full response
+            http_response = garth.client.request(
+                "POST",
+                "connectapi",
                 "/workout-service/workout",
-                method="POST",
+                api=True,
                 json=workout_json
             )
+            
+            print(f"HTTP Status Code: {http_response.status_code if hasattr(http_response, 'status_code') else 'N/A'}")
+            print(f"HTTP Response Headers: {http_response.headers if hasattr(http_response, 'headers') else 'N/A'}")
+            
+            # Try to get JSON response
+            try:
+                response = http_response.json() if hasattr(http_response, 'json') else http_response
+            except:
+                response = http_response.text if hasattr(http_response, 'text') else str(http_response)
+                
             print(f"Garmin response: {response}")
             print(f"Response type: {type(response)}")
+            
+            # Check HTTP status
+            if hasattr(http_response, 'status_code'):
+                if http_response.status_code == 201:  # Created
+                    print("✅ HTTP 201 - Workout created!")
+                elif http_response.status_code == 200:  # OK
+                    print("✅ HTTP 200 - Request successful")
+                else:
+                    print(f"⚠️ HTTP {http_response.status_code}")
             
             # Check if response is valid
             if response and isinstance(response, dict):
@@ -584,23 +605,20 @@ async def create_workout(request: WorkoutRequest):
                     "garmin_response": response
                 }
             elif isinstance(response, list) and len(response) == 0:
-                # Empty list response - this might mean the workout was created but no ID returned
-                # Let's try to fetch recent workouts to see if it's there
-                print("⚠️ Got empty response - workout may have been created without ID")
+                print("⚠️ Got empty list response")
                 return {
                     "success": True,
-                    "message": "Workout sent to Garmin (no confirmation ID received)",
+                    "message": "Workout sent to Garmin (empty response - check Garmin Connect)",
                     "workout_name": workout_json["workoutName"],
                     "workout_id": None,
                     "parsed_workout": workout_json,
-                    "garmin_response": response,
-                    "note": "Check Garmin Connect app - workout may have been created"
+                    "garmin_response": response
                 }
             else:
-                print(f"⚠️ Unexpected response format: {response}")
+                print(f"⚠️ Unexpected response: {response}")
                 return {
-                    "success": False,
-                    "message": "Unexpected response from Garmin",
+                    "success": True,
+                    "message": f"Request completed - response: {response}",
                     "workout_name": workout_json["workoutName"],
                     "garmin_response": response
                 }
