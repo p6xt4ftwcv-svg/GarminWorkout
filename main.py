@@ -579,7 +579,8 @@ async def create_workout(request: WorkoutRequest):
         print(f"Workout JSON being sent: {json.dumps(workout_json, indent=2)}")
         
         try:
-            # Make the API call and capture the full response
+            # Try POST first
+            print("Attempting POST request...")
             http_response = garth.client.request(
                 "POST",
                 "connectapi",
@@ -589,6 +590,19 @@ async def create_workout(request: WorkoutRequest):
             )
             
             print(f"HTTP Status Code: {http_response.status_code if hasattr(http_response, 'status_code') else 'N/A'}")
+            
+            # If we got a 405 (Method Not Allowed), try PUT
+            if hasattr(http_response, 'status_code') and http_response.status_code == 405:
+                print("POST not allowed, trying PUT...")
+                http_response = garth.client.request(
+                    "PUT",
+                    "connectapi",
+                    "/workout-service/workout",
+                    api=True,
+                    json=workout_json
+                )
+                print(f"PUT Status Code: {http_response.status_code}")
+            
             print(f"HTTP Response Headers: {http_response.headers if hasattr(http_response, 'headers') else 'N/A'}")
             
             # Try to get JSON response
@@ -610,19 +624,37 @@ async def create_workout(request: WorkoutRequest):
                     # Try to verify the workout was created by fetching recent workouts
                     try:
                         print("Fetching recent workouts to verify...")
-                        verify_response = garth.client.request(
-                            "GET",
-                            "connectapi",
-                            "/workout-service/workouts",
-                            api=True
-                        )
-                        recent_workouts = verify_response.json() if hasattr(verify_response, 'json') else []
-                        print(f"Found {len(recent_workouts)} recent workouts")
                         
-                        # Check if our workout is in the list
-                        for w in recent_workouts[:5]:  # Check last 5 workouts
-                            if isinstance(w, dict):
-                                print(f"  - {w.get('workoutName', 'Unknown')} (ID: {w.get('workoutId', 'N/A')})")
+                        # Try multiple endpoints
+                        endpoints_to_try = [
+                            "/workout-service/workouts",
+                            "/workout-service/workout",
+                            "/workouts",
+                        ]
+                        
+                        for endpoint in endpoints_to_try:
+                            try:
+                                print(f"  Trying endpoint: {endpoint}")
+                                verify_response = garth.client.request(
+                                    "GET",
+                                    "connectapi",
+                                    endpoint,
+                                    api=True
+                                )
+                                recent_workouts = verify_response.json() if hasattr(verify_response, 'json') else []
+                                print(f"  Response type: {type(recent_workouts)}, length: {len(recent_workouts) if isinstance(recent_workouts, (list, dict)) else 'N/A'}")
+                                
+                                if isinstance(recent_workouts, list) and len(recent_workouts) > 0:
+                                    print(f"✅ Found {len(recent_workouts)} workouts!")
+                                    for w in recent_workouts[:3]:
+                                        if isinstance(w, dict):
+                                            print(f"  - {w.get('workoutName', 'Unknown')} (ID: {w.get('workoutId', 'N/A')})")
+                                    break
+                                elif isinstance(recent_workouts, dict):
+                                    print(f"  Got dict response: {list(recent_workouts.keys())[:5]}")
+                            except Exception as e:
+                                print(f"  Endpoint {endpoint} failed: {str(e)[:100]}")
+                                
                     except Exception as verify_error:
                         print(f"Could not verify workout: {verify_error}")
                 else:
