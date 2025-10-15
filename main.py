@@ -50,10 +50,25 @@ class WorkoutParser:
         
         workout = {
             "workoutName": workout_name,
-            "sportType": {"sportTypeId": 1},  # Running
+            "description": None,
+            "sportType": {"sportTypeId": 1, "sportTypeKey": "running"},
+            "subSportType": None,
+            "estimatedDistanceUnit": "KILOMETER",
+            "estimatedDistance": None,
+            "estimatedDurationInSecs": None,
+            "poolLength": None,
+            "poolLengthUnit": None,
+            "workoutProvider": None,
+            "workoutSourceId": None,
+            "consumer": None,
+            "atpPlanId": None,
+            "workoutId": None,
+            "ownerId": None,
+            "updateDate": None,
+            "createdDate": None,
             "workoutSegments": [{
                 "segmentOrder": 1,
-                "sportType": {"sportTypeId": 1},
+                "sportType": {"sportTypeId": 1, "sportTypeKey": "running"},
                 "workoutSteps": []
             }]
         }
@@ -163,6 +178,8 @@ class WorkoutParser:
                 "type": "WorkoutRepeatStep",
                 "stepOrder": order,
                 "numberOfIterations": step_data['repeats'],
+                "smartRepeat": False,
+                "childStepId": 1,
                 "workoutSteps": []
             }
             
@@ -174,15 +191,36 @@ class WorkoutParser:
             return repeat_step
         
         else:
-            # Create a regular step
-            return {
+            # Create a regular step with all required fields
+            step = {
                 "type": "WorkoutStep",
+                "stepId": None,
                 "stepOrder": order,
+                "childStepId": None,
+                "description": None,
                 "intensity": step_data['intensity'],
                 "durationType": step_data['duration_type'],
-                "durationValue": step_data['duration_value'],
-                "targetType": step_data['target_type']
+                "targetType": step_data['target_type'],
+                "targetValueOne": None,
+                "targetValueTwo": None,
+                "zoneNumber": None,
+                "endCondition": None,
+                "endConditionValue": None,
+                "preferredEndConditionUnit": None,
+                "endConditionCompare": None
             }
+            
+            # Set duration value based on type
+            if step_data['duration_type'] == 'TIME':
+                step['durationValue'] = step_data['duration_value']
+                step['preferredDurationUnit'] = 'SECOND'
+            elif step_data['duration_type'] == 'DISTANCE':
+                step['durationValue'] = step_data['duration_value']
+                step['preferredDurationUnit'] = 'CENTIMETER'
+            else:
+                step['durationValue'] = step_data.get('duration_value')
+            
+            return step
 
 def authenticate_garmin():
     """Authenticate with Garmin using OAuth tokens from environment variables"""
