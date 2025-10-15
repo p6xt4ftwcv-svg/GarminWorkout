@@ -48,27 +48,19 @@ class WorkoutParser:
         # Extract workout name if provided
         workout_name = f"Run Workout {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         
+        # Create minimal workout structure - only required fields
         workout = {
             "workoutName": workout_name,
-            "description": None,
-            "sportType": {"sportTypeId": 1, "sportTypeKey": "running"},
-            "subSportType": None,
-            "estimatedDistanceUnit": "KILOMETER",
-            "estimatedDistance": None,
-            "estimatedDurationInSecs": None,
-            "poolLength": None,
-            "poolLengthUnit": None,
-            "workoutProvider": None,
-            "workoutSourceId": None,
-            "consumer": None,
-            "atpPlanId": None,
-            "workoutId": None,
-            "ownerId": None,
-            "updateDate": None,
-            "createdDate": None,
+            "sportType": {
+                "sportTypeId": 1,
+                "sportTypeKey": "running"
+            },
             "workoutSegments": [{
                 "segmentOrder": 1,
-                "sportType": {"sportTypeId": 1, "sportTypeKey": "running"},
+                "sportType": {
+                    "sportTypeId": 1,
+                    "sportTypeKey": "running"
+                },
                 "workoutSteps": []
             }]
         }
@@ -191,34 +183,21 @@ class WorkoutParser:
             return repeat_step
         
         else:
-            # Create a regular step with all required fields
+            # Create a minimal regular step - only required fields
             step = {
                 "type": "WorkoutStep",
-                "stepId": None,
                 "stepOrder": order,
-                "childStepId": None,
-                "description": None,
                 "intensity": step_data['intensity'],
                 "durationType": step_data['duration_type'],
-                "targetType": step_data['target_type'],
-                "targetValueOne": None,
-                "targetValueTwo": None,
-                "zoneNumber": None,
-                "endCondition": None,
-                "endConditionValue": None,
-                "preferredEndConditionUnit": None,
-                "endConditionCompare": None
+                "durationValue": step_data['duration_value'],
+                "targetType": step_data['target_type']
             }
             
-            # Set duration value based on type
+            # Add preferred unit
             if step_data['duration_type'] == 'TIME':
-                step['durationValue'] = step_data['duration_value']
                 step['preferredDurationUnit'] = 'SECOND'
             elif step_data['duration_type'] == 'DISTANCE':
-                step['durationValue'] = step_data['duration_value']
                 step['preferredDurationUnit'] = 'CENTIMETER'
-            else:
-                step['durationValue'] = step_data.get('duration_value')
             
             return step
 
@@ -627,6 +606,25 @@ async def create_workout(request: WorkoutRequest):
                     print("✅ HTTP 201 - Workout created!")
                 elif http_response.status_code == 200:  # OK
                     print("✅ HTTP 200 - Request successful")
+                    
+                    # Try to verify the workout was created by fetching recent workouts
+                    try:
+                        print("Fetching recent workouts to verify...")
+                        verify_response = garth.client.request(
+                            "GET",
+                            "connectapi",
+                            "/workout-service/workouts",
+                            api=True
+                        )
+                        recent_workouts = verify_response.json() if hasattr(verify_response, 'json') else []
+                        print(f"Found {len(recent_workouts)} recent workouts")
+                        
+                        # Check if our workout is in the list
+                        for w in recent_workouts[:5]:  # Check last 5 workouts
+                            if isinstance(w, dict):
+                                print(f"  - {w.get('workoutName', 'Unknown')} (ID: {w.get('workoutId', 'N/A')})")
+                    except Exception as verify_error:
+                        print(f"Could not verify workout: {verify_error}")
                 else:
                     print(f"⚠️ HTTP {http_response.status_code}")
             
