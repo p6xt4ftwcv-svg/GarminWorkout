@@ -42,11 +42,15 @@ class WorkoutParser:
             'threshold': {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3},
         }
     
-    def parse(self, text: str) -> dict:
+    def parse(self, text: str, custom_name: str = None) -> dict:
         """Parse workout text into Garmin workout JSON"""
 
-        # Extract workout name if provided
-        workout_name = f"Run Workout {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        # Use custom name if provided, otherwise use the workout text itself
+        if custom_name:
+            workout_name = custom_name
+        else:
+            # Use the workout text as the name, capitalize first letter
+            workout_name = text.strip().capitalize()
 
         # Create workout structure with all required fields
         workout = {
@@ -79,34 +83,69 @@ class WorkoutParser:
         """Break down text into individual workout steps"""
         steps = []
         text = text.lower()
-        
+
+        # Filter out metadata lines (Target, Notes, etc.)
+        lines = text.split('\n')
+        filtered_lines = []
+        for line in lines:
+            # Skip lines that are just metadata
+            if line.strip().startswith(('target:', 'notes:', 'expect:', 'finish with')):
+                continue
+            filtered_lines.append(line)
+
+        text = ' '.join(filtered_lines)
+
         # Split by common separators
         parts = re.split(r'[,;]|\bthen\b', text)
-        
+
         for part in parts:
             part = part.strip()
             if not part:
                 continue
-            
-            # Check for repeats: "5x(800m @ 5k pace, 400m easy)"
+
+            # Check for "Repeat X times:" pattern
+            repeat_match_times = re.match(r'repeat\s+(\d+)\s+times?\s*:\s*(.+)', part, re.IGNORECASE)
+            if repeat_match_times:
+                repeats = int(repeat_match_times.group(1))
+                inner_text = repeat_match_times.group(2)
+
+                # Parse the inner steps (may contain 2a), 2b) pattern)
+                inner_parts = re.split(r'\d+[a-z]\)\s*', inner_text)
+                inner_steps = []
+                for inner_part in inner_parts:
+                    inner_part = inner_part.strip()
+                    if inner_part:
+                        step = self._parse_single_step(inner_part)
+                        if step:
+                            inner_steps.append(step)
+
+                if inner_steps:
+                    steps.append({
+                        'type': 'repeat',
+                        'repeats': repeats,
+                        'steps': inner_steps
+                    })
+                continue
+
+            # Check for repeats: "5x(800m @ 5k pace, 400m easy)" or "6x(20 seconds, 100 seconds)"
             repeat_match = re.match(r'(\d+)\s*x\s*\(([^)]+)\)', part)
             if repeat_match:
                 repeats = int(repeat_match.group(1))
                 inner_text = repeat_match.group(2)
                 inner_steps = self._parse_steps(inner_text)
-                
+
                 steps.append({
                     'type': 'repeat',
                     'repeats': repeats,
                     'steps': inner_steps
                 })
                 continue
-            
+
             # Parse individual step
             step = self._parse_single_step(part)
             if step:
                 steps.append(step)
-        
+
         return steps
     
     def _parse_single_step(self, text: str):
@@ -119,7 +158,47 @@ class WorkoutParser:
                 step_type = value
                 break
 
-        # Parse duration - time based
+        # Also check for "stride" (high intensity) and "jog/walk" (recovery)
+        if 'stride' in text or 'fast' in text:
+            step_type = {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3}
+        elif 'jog' in text or 'walk' in text:
+            step_type = {'stepTypeId': 4, 'stepTypeKey': 'recovery', 'displayOrder': 4}
+
+        # Parse MM:SS format (like 50:00, 1:40, 0:20)
+        time_mmss_match = re.search(r'(\d+):(\d+)', text)
+        if time_mmss_match:
+            minutes = int(time_mmss_match.group(1))
+            seconds = int(time_mmss_match.group(2))
+            total_seconds = (minutes * 60) + seconds
+            return {
+                'type': 'step',
+                'step_type': step_type,
+                'end_condition': {
+                    'conditionTypeId': 2,
+                    'conditionTypeKey': 'time',
+                    'displayOrder': 2,
+                    'displayable': True
+                },
+                'end_condition_value': total_seconds,
+            }
+
+        # Parse seconds (like "20 seconds", "100 sec")
+        seconds_match = re.search(r'(\d+(?:\.\d+)?)\s*(sec|second|seconds|secs?)', text)
+        if seconds_match:
+            seconds = float(seconds_match.group(1))
+            return {
+                'type': 'step',
+                'step_type': step_type,
+                'end_condition': {
+                    'conditionTypeId': 2,
+                    'conditionTypeKey': 'time',
+                    'displayOrder': 2,
+                    'displayable': True
+                },
+                'end_condition_value': int(seconds),
+            }
+
+        # Parse duration - time based (minutes)
         time_match = re.search(r'(\d+(?:\.\d+)?)\s*(min|minute|minutes|mins?)', text)
         if time_match:
             minutes = float(time_match.group(1))
@@ -895,12 +974,8 @@ async def create_workout(request: WorkoutRequest):
         # Parse the workout text
         print("Parsing workout...")
         parser = WorkoutParser()
-        workout_json = parser.parse(request.workout_text)
+        workout_json = parser.parse(request.workout_text, custom_name=request.workout_name)
         print(f"Parsed workout: {workout_json}")
-        
-        # Override name if provided
-        if request.workout_name:
-            workout_json["workoutName"] = request.workout_name
         
         # Create workout in Garmin Connect using the high-level API
         print("Sending to Garmin...")
