@@ -800,11 +800,18 @@ def debug_workout():
             api=True
         )
 
+        # Print to logs instead of returning (to avoid serialization issues)
+        print("="*80)
+        print("WORKOUT DETAILS (check Railway logs):")
+        print("="*80)
+        print(json.dumps(workout_details, indent=2))
+        print("="*80)
+
         return {
             "success": True,
-            "message": "Fetched existing workout format",
-            "workout_summary": first_workout,
-            "workout_details": workout_details
+            "message": "Workout details printed to Railway logs. Check the logs to see the format!",
+            "workout_id": workout_id,
+            "workout_name": first_workout.get('workoutName', 'Unknown')
         }
 
     except Exception as e:
