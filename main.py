@@ -196,14 +196,14 @@ class WorkoutParser:
 def authenticate_garmin():
     """Authenticate with Garmin using OAuth tokens from environment variables"""
     print("Starting authentication...")
-    
-    # OAuth2 tokens
-    access_token = os.getenv("GARMIN_OAUTH_ACCESS_TOKEN")
-    refresh_token = os.getenv("GARMIN_OAUTH_REFRESH_TOKEN")
-    
-    # OAuth1 tokens (needed for API calls)
-    oauth1_token = os.getenv("GARMIN_OAUTH1_TOKEN")
-    oauth1_token_secret = os.getenv("GARMIN_OAUTH1_TOKEN_SECRET")
+
+    # OAuth2 tokens - strip whitespace to prevent header errors
+    access_token = os.getenv("GARMIN_OAUTH_ACCESS_TOKEN", "").strip()
+    refresh_token = os.getenv("GARMIN_OAUTH_REFRESH_TOKEN", "").strip()
+
+    # OAuth1 tokens (needed for API calls) - strip whitespace
+    oauth1_token = os.getenv("GARMIN_OAUTH1_TOKEN", "").strip()
+    oauth1_token_secret = os.getenv("GARMIN_OAUTH1_TOKEN_SECRET", "").strip()
     
     print(f"OAuth2 Access Token present: {bool(access_token)}")
     print(f"OAuth2 Refresh Token present: {bool(refresh_token)}")
