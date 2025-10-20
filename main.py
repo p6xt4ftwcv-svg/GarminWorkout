@@ -249,6 +249,10 @@ def authenticate_garmin():
         oauth2_token = OAuth2Token(**oauth2_dict)
         garth.client.oauth2_token = oauth2_token
         print("✅ OAuth2 token set on garth.client")
+
+        # Enable automatic token refresh
+        garth.client.auto_refresh = True
+        print("✅ Automatic token refresh enabled")
         
         oauth1_token_obj = OAuth1Token(
             oauth_token=oauth1_token,
@@ -274,13 +278,25 @@ def authenticate_garmin():
         return client
         
     except Exception as e:
-        error_msg = f"Failed to authenticate with Garmin: {str(e)}"
-        print(f"ERROR during token setup: {error_msg}")
+        error_msg = str(e)
+        error_type = type(e).__name__
+
+        # Provide helpful error messages based on error type
+        if "401" in error_msg or "unauthorized" in error_msg.lower():
+            helpful_msg = "Authentication failed - your OAuth tokens may have expired. You'll need to generate new tokens from Garmin Connect."
+        elif "403" in error_msg or "forbidden" in error_msg.lower():
+            helpful_msg = "Access forbidden - check that your OAuth1 tokens are correct."
+        elif "token" in error_msg.lower() and "expired" in error_msg.lower():
+            helpful_msg = "Your OAuth tokens have expired. Please generate new tokens from Garmin Connect."
+        else:
+            helpful_msg = f"Failed to authenticate with Garmin: {error_msg}"
+
+        print(f"ERROR during token setup: {error_type}: {error_msg}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=error_msg
+            detail=helpful_msg
         )
 
 @app.get("/", response_class=HTMLResponse)
@@ -540,6 +556,54 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.get("/test-auth")
+def test_auth():
+    """Test if Garmin OAuth tokens are configured and valid"""
+    try:
+        print("Testing authentication...")
+        client = authenticate_garmin()
+
+        # Try to fetch user profile to verify authentication works
+        print("Fetching user profile...")
+        try:
+            # Use garth client to make a simple API call
+            response = client.garth.get("connectapi", "/userprofile-service/userprofile")
+            username = response.get("userName", "Unknown")
+            print(f"Successfully authenticated as: {username}")
+
+            return {
+                "success": True,
+                "message": "Authentication successful!",
+                "username": username,
+                "tokens_configured": True
+            }
+        except Exception as api_error:
+            print(f"API call failed: {api_error}")
+            return {
+                "success": False,
+                "message": f"Tokens configured but API call failed: {str(api_error)}",
+                "tokens_configured": True,
+                "api_error": str(api_error)
+            }
+
+    except HTTPException as e:
+        # Token configuration error
+        return {
+            "success": False,
+            "message": e.detail,
+            "tokens_configured": False
+        }
+    except Exception as e:
+        # Other errors
+        print(f"Unexpected error: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            "success": False,
+            "message": f"Unexpected error: {str(e)}",
+            "error_type": type(e).__name__
+        }
 
 @app.post("/create-workout")
 async def create_workout(request: WorkoutRequest):
