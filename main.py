@@ -228,52 +228,60 @@ def authenticate_garmin():
     
     try:
         print("Configuring garth with tokens...")
-        
-        # Configure garth with tokens first
-        from garth.auth_tokens import OAuth2Token, OAuth1Token
-        
-        oauth2_dict = {
-            'access_token': access_token,
-            'refresh_token': refresh_token,
-            'token_type': 'Bearer',
-            'expires_in': 3600,
-            'expires_at': int(time.time()) + 3600,
-            'refresh_token_expires_in': 2592000,
-            'refresh_token_expires_at': int(time.time()) + 2592000,
-            'scope': '',
-            'jti': '',
-            'expired': False,
-            'refresh_expired': False
-        }
-        
-        oauth2_token = OAuth2Token(**oauth2_dict)
-        garth.client.oauth2_token = oauth2_token
-        print("✅ OAuth2 token set on garth.client")
 
-        # Enable automatic token refresh
-        garth.client.auto_refresh = True
-        print("✅ Automatic token refresh enabled")
-        
-        oauth1_token_obj = OAuth1Token(
-            oauth_token=oauth1_token,
-            oauth_token_secret=oauth1_token_secret
-        )
-        garth.client.oauth1_token = oauth1_token_obj
-        print("✅ OAuth1 token set on garth.client")
-        
-        if not garth.client.domain:
-            garth.client.domain = "garmin.com"
-        
-        garth.client.configure()
-        print("✅ Garth configured")
-        
+        # Create temporary directory for garth tokens
+        import tempfile
+        import os as os_module
+
+        temp_dir = tempfile.mkdtemp()
+        print(f"Created temp directory: {temp_dir}")
+
+        # Create oauth1_token.json
+        oauth1_data = {
+            "oauth_token": oauth1_token,
+            "oauth_token_secret": oauth1_token_secret
+        }
+        oauth1_path = os_module.path.join(temp_dir, "oauth1_token.json")
+        with open(oauth1_path, 'w') as f:
+            json.dump(oauth1_data, f)
+        print("✅ OAuth1 token file created")
+
+        # Create oauth2_token.json
+        oauth2_data = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "expires_at": int(time.time()) + 3600,
+            "refresh_token_expires_in": 2592000,
+            "refresh_token_expires_at": int(time.time()) + 2592000,
+            "scope": "",
+            "jti": "",
+            "expired": False,
+            "refresh_expired": False
+        }
+        oauth2_path = os_module.path.join(temp_dir, "oauth2_token.json")
+        with open(oauth2_path, 'w') as f:
+            json.dump(oauth2_data, f)
+        print("✅ OAuth2 token file created")
+
+        # Create domain.txt
+        domain_path = os_module.path.join(temp_dir, "domain.txt")
+        with open(domain_path, 'w') as f:
+            f.write("garmin.com")
+        print("✅ Domain file created")
+
+        # Resume garth session from the temporary directory
+        garth.resume(temp_dir)
+        print("✅ Garth session resumed successfully!")
+
         # Now create Garmin client - it will automatically use the configured garth.client
         print("Creating Garmin client...")
         client = Garmin()
-        
-        # Manually set the garth client on the Garmin instance
+
+        # The Garmin client should automatically use garth.client
         client.garth = garth.client
-        
+
         print("✅ Garmin client created and configured!")
         return client
         
