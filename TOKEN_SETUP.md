@@ -4,7 +4,21 @@ Your Garmin OAuth tokens expire periodically. When you see **401 Unauthorized** 
 
 ## 🚀 Quick Setup (5 minutes)
 
-### Step 1: Run the Token Generator Locally
+**Choose your method:**
+
+### Option A: Google Colab (Recommended for iPad/Mobile)
+
+Perfect if you're on an iPad or don't have Python installed locally.
+
+1. **Download** the `Get_Garmin_Tokens.ipynb` file from this repo
+2. **Go to** [Google Colab](https://colab.research.google.com/)
+3. **Upload** the notebook (File → Upload notebook)
+4. **Run all cells** (Runtime → Run all)
+5. **Enter** your Garmin credentials when prompted
+6. **Copy** the 4 tokens that appear
+7. **Paste** into Railway Variables
+
+### Option B: Run Locally (If you have Python)
 
 ```bash
 # Install dependencies (if not already installed)
