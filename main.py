@@ -228,52 +228,60 @@ def authenticate_garmin():
     
     try:
         print("Configuring garth with tokens...")
-        
-        # Configure garth with tokens first
-        from garth.auth_tokens import OAuth2Token, OAuth1Token
-        
-        oauth2_dict = {
-            'access_token': access_token,
-            'refresh_token': refresh_token,
-            'token_type': 'Bearer',
-            'expires_in': 3600,
-            'expires_at': int(time.time()) + 3600,
-            'refresh_token_expires_in': 2592000,
-            'refresh_token_expires_at': int(time.time()) + 2592000,
-            'scope': '',
-            'jti': '',
-            'expired': False,
-            'refresh_expired': False
-        }
-        
-        oauth2_token = OAuth2Token(**oauth2_dict)
-        garth.client.oauth2_token = oauth2_token
-        print("✅ OAuth2 token set on garth.client")
 
-        # Enable automatic token refresh
-        garth.client.auto_refresh = True
-        print("✅ Automatic token refresh enabled")
-        
-        oauth1_token_obj = OAuth1Token(
-            oauth_token=oauth1_token,
-            oauth_token_secret=oauth1_token_secret
-        )
-        garth.client.oauth1_token = oauth1_token_obj
-        print("✅ OAuth1 token set on garth.client")
-        
-        if not garth.client.domain:
-            garth.client.domain = "garmin.com"
-        
-        garth.client.configure()
-        print("✅ Garth configured")
-        
+        # Create temporary directory for garth tokens
+        import tempfile
+        import os as os_module
+
+        temp_dir = tempfile.mkdtemp()
+        print(f"Created temp directory: {temp_dir}")
+
+        # Create oauth1_token.json
+        oauth1_data = {
+            "oauth_token": oauth1_token,
+            "oauth_token_secret": oauth1_token_secret
+        }
+        oauth1_path = os_module.path.join(temp_dir, "oauth1_token.json")
+        with open(oauth1_path, 'w') as f:
+            json.dump(oauth1_data, f)
+        print("✅ OAuth1 token file created")
+
+        # Create oauth2_token.json
+        oauth2_data = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "expires_at": int(time.time()) + 3600,
+            "refresh_token_expires_in": 2592000,
+            "refresh_token_expires_at": int(time.time()) + 2592000,
+            "scope": "",
+            "jti": "",
+            "expired": False,
+            "refresh_expired": False
+        }
+        oauth2_path = os_module.path.join(temp_dir, "oauth2_token.json")
+        with open(oauth2_path, 'w') as f:
+            json.dump(oauth2_data, f)
+        print("✅ OAuth2 token file created")
+
+        # Create domain.txt
+        domain_path = os_module.path.join(temp_dir, "domain.txt")
+        with open(domain_path, 'w') as f:
+            f.write("garmin.com")
+        print("✅ Domain file created")
+
+        # Resume garth session from the temporary directory
+        garth.resume(temp_dir)
+        print("✅ Garth session resumed successfully!")
+
         # Now create Garmin client - it will automatically use the configured garth.client
         print("Creating Garmin client...")
         client = Garmin()
-        
-        # Manually set the garth client on the Garmin instance
+
+        # The Garmin client should automatically use garth.client
         client.garth = garth.client
-        
+
         print("✅ Garmin client created and configured!")
         return client
         
@@ -557,6 +565,158 @@ def read_root():
 def health_check():
     return {"status": "healthy"}
 
+@app.get("/help-tokens", response_class=HTMLResponse)
+def help_tokens():
+    """Guide for getting tokens with 2FA enabled"""
+    return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Garmin Tokens (2FA Enabled)</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #333; margin-bottom: 20px; }
+        h2 { color: #667eea; margin-top: 30px; margin-bottom: 15px; font-size: 20px; }
+        .alert { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+        .step { background: #f8f9fa; padding: 20px; margin: 15px 0; border-radius: 10px; border-left: 4px solid #667eea; }
+        .step-number { background: #667eea; color: white; border-radius: 50%; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 10px; }
+        code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 14px; }
+        .code-block { background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 8px; overflow-x: auto; margin: 10px 0; }
+        .success { background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; border-radius: 5px; }
+        a { color: #667eea; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .btn { display: inline-block; background: #667eea; color: white; padding: 10px 20px; border-radius: 8px; margin: 10px 5px; text-decoration: none; }
+        .btn:hover { background: #5568d3; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Getting Tokens with 2FA Enabled</h1>
+
+        <div class="alert">
+            <strong>⚠️ Note:</strong> Garmin doesn't allow disabling 2FA once enabled. This guide shows you how to get tokens anyway!
+        </div>
+
+        <h2>🎯 Best Method: Use a Desktop Computer</h2>
+
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Download the notebook</strong><br>
+            Go to GitHub and download <code>Get_Garmin_Tokens.ipynb</code>
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Open Google Colab</strong><br>
+            Visit <a href="https://colab.research.google.com/" target="_blank">colab.research.google.com</a> and upload the notebook
+        </div>
+
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Run in Colab</strong><br>
+            Unfortunately, the standard login won't work with 2FA. <strong>But there's a workaround!</strong>
+        </div>
+
+        <h2>💡 Workaround for 2FA: Manual Token Extraction</h2>
+
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Open Chrome/Edge Developer Tools</strong><br>
+            1. Go to <a href="https://connect.garmin.com/" target="_blank">connect.garmin.com</a><br>
+            2. Log in (complete 2FA normally)<br>
+            3. Press <code>F12</code> to open Developer Tools
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Open Console Tab</strong><br>
+            Click the <strong>Console</strong> tab in Developer Tools
+        </div>
+
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Run This Script</strong><br>
+            Paste this into the console and press Enter:
+            <div class="code-block">// Get tokens from Garmin Connect session
+try {
+    // Try to find tokens in localStorage
+    const storage = localStorage;
+    const tokens = {};
+
+    for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (key.includes('token') || key.includes('oauth') || key.includes('auth')) {
+            console.log(key + ': ' + storage.getItem(key));
+        }
+    }
+
+    console.log('\\n📋 Look for values containing: access_token, refresh_token, oauth_token, oauth_token_secret');
+    console.log('⚠️  If you don\\'t see tokens, you\\'ll need to use Python on a desktop');
+} catch(e) {
+    console.error('Error:', e);
+}</div>
+        </div>
+
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Copy the Token Values</strong><br>
+            Look for these 4 tokens in the console output and copy their values
+        </div>
+
+        <h2>🚨 Important: If Manual Extraction Doesn't Work</h2>
+
+        <div class="alert">
+            <strong>Alternative Solution:</strong> You'll need access to a desktop computer with Python installed. Here's why:<br><br>
+
+            • The <code>garth</code> library needs to perform interactive login with 2FA<br>
+            • This requires a Python environment (can't run in browser)<br>
+            • Google Colab has limitations with interactive 2FA flows<br><br>
+
+            <strong>Options:</strong><br>
+            1. Use a desktop computer (yours or a friend's) to run <code>get_tokens.py</code><br>
+            2. Use a cloud VM (AWS, Azure, etc.) with Python installed<br>
+            3. Ask a developer friend to help run the script for you
+        </div>
+
+        <h2>✅ Once You Have Tokens</h2>
+
+        <div class="success">
+            <strong>Update Railway Variables:</strong><br>
+            1. Go to Railway Dashboard → Your Service → Variables<br>
+            2. Update these 4 variables:<br>
+            &nbsp;&nbsp;&nbsp;• <code>GARMIN_OAUTH_ACCESS_TOKEN</code><br>
+            &nbsp;&nbsp;&nbsp;• <code>GARMIN_OAUTH_REFRESH_TOKEN</code><br>
+            &nbsp;&nbsp;&nbsp;• <code>GARMIN_OAUTH1_TOKEN</code><br>
+            &nbsp;&nbsp;&nbsp;• <code>GARMIN_OAUTH1_TOKEN_SECRET</code><br>
+            3. Railway will auto-deploy (1-2 min)<br>
+            4. Test by creating a workout!
+        </div>
+
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="/" class="btn">← Back to Workout Creator</a>
+            <a href="https://github.com/p6xt4ftwcv-svg/GarminWorkout" class="btn" target="_blank">View on GitHub</a>
+        </div>
+    </div>
+</body>
+</html>
+    """
+
 @app.get("/test-auth")
 def test_auth():
     """Test if Garmin OAuth tokens are configured and valid"""
@@ -564,19 +724,19 @@ def test_auth():
         print("Testing authentication...")
         client = authenticate_garmin()
 
-        # Try to fetch user profile to verify authentication works
-        print("Fetching user profile...")
+        # Try to fetch workouts to verify authentication works
+        print("Fetching workouts to test authentication...")
         try:
-            # Use garth client to make a simple API call
-            response = client.garth.get("connectapi", "/userprofile-service/userprofile")
-            username = response.get("userName", "Unknown")
-            print(f"Successfully authenticated as: {username}")
+            # Use the garminconnect library's method to fetch workouts
+            workouts = client.get_workouts()
+            workout_count = len(workouts) if workouts else 0
+            print(f"Successfully authenticated! Found {workout_count} workouts in account")
 
             return {
                 "success": True,
-                "message": "Authentication successful!",
-                "username": username,
-                "tokens_configured": True
+                "message": "Authentication successful! Your tokens are working.",
+                "tokens_configured": True,
+                "workout_count": workout_count
             }
         except Exception as api_error:
             print(f"API call failed: {api_error}")
