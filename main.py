@@ -28,18 +28,18 @@ class WorkoutRequest(BaseModel):
 
 class WorkoutParser:
     """Parse natural language workout descriptions into Garmin workout structure"""
-    
+
     def __init__(self):
         self.intensity_map = {
-            'warmup': 'WARMUP',
-            'warm up': 'WARMUP',
-            'cooldown': 'COOLDOWN',
-            'cool down': 'COOLDOWN',
-            'easy': 'ACTIVE',
-            'recovery': 'RECOVERY',
-            'interval': 'ACTIVE',
-            'tempo': 'ACTIVE',
-            'threshold': 'ACTIVE',
+            'warmup': {'stepTypeId': 1, 'stepTypeKey': 'warmup', 'displayOrder': 1},
+            'warm up': {'stepTypeId': 1, 'stepTypeKey': 'warmup', 'displayOrder': 1},
+            'cooldown': {'stepTypeId': 2, 'stepTypeKey': 'cooldown', 'displayOrder': 2},
+            'cool down': {'stepTypeId': 2, 'stepTypeKey': 'cooldown', 'displayOrder': 2},
+            'easy': {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3},
+            'recovery': {'stepTypeId': 4, 'stepTypeKey': 'recovery', 'displayOrder': 4},
+            'interval': {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3},
+            'tempo': {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3},
+            'threshold': {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3},
         }
     
     def parse(self, text: str) -> dict:
@@ -111,32 +111,36 @@ class WorkoutParser:
     
     def _parse_single_step(self, text: str):
         """Parse a single step like '10 min warmup' or '800m @ 5k pace'"""
-        
-        # Determine intensity
-        intensity = 'ACTIVE'
+
+        # Determine intensity/step type
+        step_type = {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3}  # default
         for key, value in self.intensity_map.items():
             if key in text:
-                intensity = value
+                step_type = value
                 break
-        
+
         # Parse duration - time based
         time_match = re.search(r'(\d+(?:\.\d+)?)\s*(min|minute|minutes|mins?)', text)
         if time_match:
             minutes = float(time_match.group(1))
             return {
                 'type': 'step',
-                'intensity': intensity,
-                'duration_type': 'TIME',
-                'duration_value': int(minutes * 60),  # Convert to seconds
-                'target_type': 'NO_TARGET'
+                'step_type': step_type,
+                'end_condition': {
+                    'conditionTypeId': 2,
+                    'conditionTypeKey': 'time',
+                    'displayOrder': 2,
+                    'displayable': True
+                },
+                'end_condition_value': int(minutes * 60),  # seconds
             }
-        
+
         # Parse duration - distance based
         distance_match = re.search(r'(\d+(?:\.\d+)?)\s*(m|meter|meters|km|k|mile|miles|mi)', text)
         if distance_match:
             value = float(distance_match.group(1))
             unit = distance_match.group(2)
-            
+
             # Convert to meters
             if unit in ['km', 'k']:
                 meters = value * 1000
@@ -144,57 +148,98 @@ class WorkoutParser:
                 meters = value * 1609.34
             else:
                 meters = value
-            
+
             return {
                 'type': 'step',
-                'intensity': intensity,
-                'duration_type': 'DISTANCE',
-                'duration_value': int(meters * 100),  # Garmin uses centimeters
-                'target_type': 'NO_TARGET'
+                'step_type': step_type,
+                'end_condition': {
+                    'conditionTypeId': 3,
+                    'conditionTypeKey': 'distance',
+                    'displayOrder': 3,
+                    'displayable': True
+                },
+                'end_condition_value': meters,  # meters (not centimeters!)
             }
-        
+
         # Default: 5 minutes if we can't parse
         return {
             'type': 'step',
-            'intensity': intensity,
-            'duration_type': 'TIME',
-            'duration_value': 300,
-            'target_type': 'NO_TARGET'
+            'step_type': step_type,
+            'end_condition': {
+                'conditionTypeId': 2,
+                'conditionTypeKey': 'time',
+                'displayOrder': 2,
+                'displayable': True
+            },
+            'end_condition_value': 300,
         }
     
     def _create_step(self, order: int, step_data: dict) -> dict:
-        """Create Garmin workout step JSON"""
-        
+        """Create Garmin workout step JSON matching exact API format"""
+
         if step_data['type'] == 'repeat':
             # Create a repeat step
             repeat_step = {
-                "type": "WorkoutRepeatStep",
-                "stepId": order,
+                "type": "RepeatGroupDTO",
+                "stepId": None,
                 "stepOrder": order,
                 "numberOfIterations": step_data['repeats'],
                 "smartRepeat": False,
                 "childStepId": 1,
                 "workoutSteps": []
             }
-            
+
             for idx, inner_step in enumerate(step_data['steps']):
                 repeat_step["workoutSteps"].append(
                     self._create_step(idx + 1, inner_step)
                 )
-            
+
             return repeat_step
-        
+
         else:
-            # Create a regular step with all required fields
+            # Create ExecutableStepDTO matching Garmin's exact format
             step = {
-                "type": "WorkoutStep",
-                "stepId": order,
+                "type": "ExecutableStepDTO",
+                "stepId": None,
                 "stepOrder": order,
-                "intensity": step_data['intensity'],
-                "description": "",
-                "durationType": step_data['duration_type'],
-                "durationValue": step_data['duration_value'],
-                "targetType": step_data['target_type']
+                "stepType": step_data['step_type'],
+                "childStepId": None,
+                "description": None,
+                "endCondition": step_data['end_condition'],
+                "endConditionValue": step_data['end_condition_value'],
+                "preferredEndConditionUnit": None,
+                "endConditionCompare": None,
+                "targetType": {
+                    "workoutTargetTypeId": 1,
+                    "workoutTargetTypeKey": "no.target",
+                    "displayOrder": 1
+                },
+                "targetValueOne": None,
+                "targetValueTwo": None,
+                "targetValueUnit": None,
+                "zoneNumber": None,
+                "secondaryTargetType": None,
+                "secondaryTargetValueOne": None,
+                "secondaryTargetValueTwo": None,
+                "secondaryTargetValueUnit": None,
+                "secondaryZoneNumber": None,
+                "endConditionZone": None,
+                "strokeType": {
+                    "strokeTypeId": 0,
+                    "strokeTypeKey": None,
+                    "displayOrder": 0
+                },
+                "equipmentType": {
+                    "equipmentTypeId": 0,
+                    "equipmentTypeKey": None,
+                    "displayOrder": 0
+                },
+                "category": None,
+                "exerciseName": None,
+                "workoutProvider": None,
+                "providerExerciseSourceId": None,
+                "weightValue": None,
+                "weightUnit": None
             }
 
             return step
