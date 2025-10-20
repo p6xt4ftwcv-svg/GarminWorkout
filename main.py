@@ -564,19 +564,19 @@ def test_auth():
         print("Testing authentication...")
         client = authenticate_garmin()
 
-        # Try to fetch user profile to verify authentication works
-        print("Fetching user profile...")
+        # Try to fetch workouts to verify authentication works
+        print("Fetching workouts to test authentication...")
         try:
-            # Use garth client to make a simple API call
-            response = client.garth.get("connectapi", "/userprofile-service/userprofile")
-            username = response.get("userName", "Unknown")
-            print(f"Successfully authenticated as: {username}")
+            # Use the garminconnect library's method to fetch workouts
+            workouts = client.get_workouts()
+            workout_count = len(workouts) if workouts else 0
+            print(f"Successfully authenticated! Found {workout_count} workouts in account")
 
             return {
                 "success": True,
-                "message": "Authentication successful!",
-                "username": username,
-                "tokens_configured": True
+                "message": "Authentication successful! Your tokens are working.",
+                "tokens_configured": True,
+                "workout_count": workout_count
             }
         except Exception as api_error:
             print(f"API call failed: {api_error}")
