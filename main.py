@@ -793,12 +793,15 @@ def debug_workout():
 
         print(f"Fetching details for workout ID: {workout_id}")
 
-        # Try to get full workout details
-        workout_details = client.garth.get(
+        # Try to get full workout details - garth returns JSON directly
+        response = client.garth.get(
             "connectapi",
             f"/workout-service/workout/{workout_id}",
             api=True
         )
+
+        # The response from garth.get() is already parsed JSON (dict)
+        workout_details = response if isinstance(response, dict) else response.json() if hasattr(response, 'json') else {}
 
         # Print to logs instead of returning (to avoid serialization issues)
         print("="*80)
