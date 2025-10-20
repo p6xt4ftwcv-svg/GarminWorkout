@@ -42,11 +42,15 @@ class WorkoutParser:
             'threshold': {'stepTypeId': 3, 'stepTypeKey': 'interval', 'displayOrder': 3},
         }
     
-    def parse(self, text: str) -> dict:
+    def parse(self, text: str, custom_name: str = None) -> dict:
         """Parse workout text into Garmin workout JSON"""
 
-        # Extract workout name if provided
-        workout_name = f"Run Workout {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        # Use custom name if provided, otherwise use the workout text itself
+        if custom_name:
+            workout_name = custom_name
+        else:
+            # Use the workout text as the name, capitalize first letter
+            workout_name = text.strip().capitalize()
 
         # Create workout structure with all required fields
         workout = {
@@ -895,12 +899,8 @@ async def create_workout(request: WorkoutRequest):
         # Parse the workout text
         print("Parsing workout...")
         parser = WorkoutParser()
-        workout_json = parser.parse(request.workout_text)
+        workout_json = parser.parse(request.workout_text, custom_name=request.workout_name)
         print(f"Parsed workout: {workout_json}")
-        
-        # Override name if provided
-        if request.workout_name:
-            workout_json["workoutName"] = request.workout_name
         
         # Create workout in Garmin Connect using the high-level API
         print("Sending to Garmin...")
