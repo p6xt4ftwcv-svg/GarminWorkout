@@ -771,6 +771,52 @@ def test_auth():
             "error_type": type(e).__name__
         }
 
+@app.get("/debug-workout")
+def debug_workout():
+    """Fetch an existing workout to see the correct format"""
+    try:
+        print("Fetching existing workout for debugging...")
+        client = authenticate_garmin()
+
+        workouts = client.get_workouts()
+
+        if not workouts or len(workouts) == 0:
+            return {
+                "success": False,
+                "message": "No workouts found in your account. Create one manually in Garmin Connect first.",
+                "workout_count": 0
+            }
+
+        # Get the first workout details
+        first_workout = workouts[0]
+        workout_id = first_workout.get('workoutId')
+
+        print(f"Fetching details for workout ID: {workout_id}")
+
+        # Try to get full workout details
+        workout_details = client.garth.get(
+            "connectapi",
+            f"/workout-service/workout/{workout_id}",
+            api=True
+        )
+
+        return {
+            "success": True,
+            "message": "Fetched existing workout format",
+            "workout_summary": first_workout,
+            "workout_details": workout_details
+        }
+
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return {
+            "success": False,
+            "message": str(e),
+            "error_type": type(e).__name__
+        }
+
 @app.post("/create-workout")
 async def create_workout(request: WorkoutRequest):
     """
