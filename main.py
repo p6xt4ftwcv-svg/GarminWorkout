@@ -44,20 +44,23 @@ class WorkoutParser:
     
     def parse(self, text: str) -> dict:
         """Parse workout text into Garmin workout JSON"""
-        
+
         # Extract workout name if provided
         workout_name = f"Run Workout {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        
-        # Create minimal workout structure - only required fields
+
+        # Create workout structure with all required fields
         workout = {
             "workoutName": workout_name,
+            "description": "",  # Required field
             "sportType": {
-                "sportTypeId": 1
+                "sportTypeId": 1,
+                "sportTypeKey": "running"
             },
             "workoutSegments": [{
                 "segmentOrder": 1,
                 "sportType": {
-                    "sportTypeId": 1
+                    "sportTypeId": 1,
+                    "sportTypeKey": "running"
                 },
                 "workoutSteps": []
             }]
@@ -166,6 +169,7 @@ class WorkoutParser:
             # Create a repeat step
             repeat_step = {
                 "type": "WorkoutRepeatStep",
+                "stepId": order,
                 "stepOrder": order,
                 "numberOfIterations": step_data['repeats'],
                 "smartRepeat": False,
@@ -181,16 +185,18 @@ class WorkoutParser:
             return repeat_step
         
         else:
-            # Create a minimal regular step - only required fields
+            # Create a regular step with all required fields
             step = {
                 "type": "WorkoutStep",
+                "stepId": order,
                 "stepOrder": order,
                 "intensity": step_data['intensity'],
+                "description": "",
                 "durationType": step_data['duration_type'],
                 "durationValue": step_data['duration_value'],
                 "targetType": step_data['target_type']
             }
-            
+
             return step
 
 def authenticate_garmin():
