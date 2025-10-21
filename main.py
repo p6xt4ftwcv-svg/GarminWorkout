@@ -135,17 +135,21 @@ class WorkoutParser:
                 'has_workout': bool(test_line)
             })
 
-        # Associate HR targets: if line has no workout but has HR, apply to previous workout line
+        # Associate HR targets: apply to previous workout line if exists
         for idx in range(len(line_info)):
-            if not line_info[idx]['has_workout'] and line_info[idx]['hr_target']:
-                # Metadata-only line with HR target - apply to previous workout line
-                print(f"DEBUG: Line {idx} has HR target but no workout: {line_info[idx]['hr_target']}")
+            if line_info[idx]['hr_target']:
+                print(f"DEBUG: Line {idx} has HR target: {line_info[idx]['hr_target']}")
+                # Try to apply to previous workout line first
+                applied = False
                 for prev_idx in range(idx - 1, -1, -1):
-                    if line_info[prev_idx]['has_workout']:
-                        if not line_info[prev_idx]['hr_target']:
-                            line_info[prev_idx]['hr_target'] = line_info[idx]['hr_target']
-                            print(f"DEBUG: Applied HR target to line {prev_idx}: {line_info[idx]['hr_target']}")
+                    if line_info[prev_idx]['has_workout'] and not line_info[prev_idx]['hr_target']:
+                        line_info[prev_idx]['hr_target'] = line_info[idx]['hr_target']
+                        print(f"DEBUG: Applied HR target to previous line {prev_idx}")
+                        applied = True
                         break
+
+                if not applied:
+                    print(f"DEBUG: No previous line to apply to, keeping on current line {idx}")
 
         # Build parts list from workout lines
         all_parts = []
@@ -155,6 +159,7 @@ class WorkoutParser:
 
             line_text = info['cleaned']
             hr_target = info['hr_target']
+            print(f"DEBUG: Building parts from line with HR target: {hr_target}")
 
             # Split each line by commas, semicolons, or "then"
             line_parts = re.split(r'[,;]|\bthen\b', line_text)
