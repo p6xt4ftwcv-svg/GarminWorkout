@@ -103,7 +103,7 @@ class WorkoutParser:
         line_info = []
 
         for idx, line in enumerate(lines):
-            # Extract HR target
+            # Extract HR target (only the FIRST one on the line - for the main step)
             hr_target = None
             hr_range_match = re.search(r'hr\s+(\d+)\s*[-–]\s*(\d+)\s*bpm', line, re.IGNORECASE)
             if hr_range_match:
@@ -130,6 +130,7 @@ class WorkoutParser:
             test_line = test_line.strip()
 
             line_info.append({
+                'original': line,  # Keep original for extracting HR from inner steps
                 'cleaned': test_line,
                 'hr_target': hr_target,
                 'has_workout': bool(test_line)
@@ -219,16 +220,24 @@ class WorkoutParser:
         return steps
 
     def _extract_hr_from_text(self, text: str):
-        """Extract HR target from text fragment"""
-        # Look for HR targets like "HR 120-140 bpm" or "HR cap 135 bpm"
-        hr_range_match = re.search(r'hr\s+(\d+)\s*[-–]\s*(\d+)\s*bpm', text, re.IGNORECASE)
+        """Extract HR target from text fragment
+
+        Handles formats like:
+        - "HR 120-140 bpm"
+        - "HR cap 135 bpm"
+        - "set hr cap 135 bpm" (after "Target:" stripped)
+        """
+        # Look for HR range: "HR 120-140 bpm" or just "120-140 bpm"
+        hr_range_match = re.search(r'(?:hr\s+)?(\d+)\s*[-–]\s*(\d+)\s*bpm', text, re.IGNORECASE)
         if hr_range_match:
             return {
                 'min': int(hr_range_match.group(1)),
                 'max': int(hr_range_match.group(2))
             }
 
-        hr_cap_match = re.search(r'hr\s+(?:cap|max)\s+(\d+)\s*bpm', text, re.IGNORECASE)
+        # Look for HR cap/max: "HR cap 135 bpm", "set hr cap 135 bpm", etc.
+        # Use word boundary before "hr" to allow preceding words
+        hr_cap_match = re.search(r'\bhr\s+(?:cap|max|<)\s*(\d+)\s*bpm', text, re.IGNORECASE)
         if hr_cap_match:
             return {
                 'max': int(hr_cap_match.group(1))
