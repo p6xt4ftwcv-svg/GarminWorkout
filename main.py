@@ -49,8 +49,13 @@ class WorkoutParser:
         if custom_name:
             workout_name = custom_name
         else:
-            # Use the workout text as the name, capitalize first letter
-            workout_name = text.strip().capitalize()
+            # For multi-line workouts, use just the first line as the name
+            first_line = text.strip().split('\n')[0].strip()
+            # Remove em-dashes and clean up
+            workout_name = first_line.replace('—', '-').capitalize()
+            # Limit length to avoid overly long names
+            if len(workout_name) > 50:
+                workout_name = workout_name[:47] + "..."
 
         # Create workout structure with all required fields
         workout = {
@@ -93,12 +98,18 @@ class WorkoutParser:
                 continue
             filtered_lines.append(line)
 
-        text = ' '.join(filtered_lines)
+        # Process each line separately (newlines separate major steps)
+        # Then also split each line by commas/semicolons for inline multiple steps
+        all_parts = []
+        for line in filtered_lines:
+            line = line.strip()
+            if not line:
+                continue
+            # Split each line by commas, semicolons, or "then"
+            line_parts = re.split(r'[,;]|\bthen\b', line)
+            all_parts.extend(line_parts)
 
-        # Split by common separators
-        parts = re.split(r'[,;]|\bthen\b', text)
-
-        for part in parts:
+        for part in all_parts:
             part = part.strip()
             if not part:
                 continue
