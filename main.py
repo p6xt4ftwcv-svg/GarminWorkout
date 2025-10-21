@@ -96,19 +96,38 @@ class WorkoutParser:
     def _parse_steps(self, text: str):
         """Break down text into individual workout steps"""
         steps = []
-        text = text.lower()
+        text_lower = text.lower()
+
+        # First pass: Extract HR targets from each line before filtering
+        # Store as: {line_index: {'min': X, 'max': Y}} or {'max': Y}
+        lines = text_lower.split('\n')
+        line_hr_targets = {}
+
+        for idx, line in enumerate(lines):
+            # Look for HR targets like "HR 120-140 bpm" or "HR cap 135 bpm"
+            # Pattern 1: HR range (120-140 or 120–140 with em-dash)
+            hr_range_match = re.search(r'hr\s+(\d+)\s*[-–]\s*(\d+)\s*bpm', line, re.IGNORECASE)
+            if hr_range_match:
+                line_hr_targets[idx] = {
+                    'min': int(hr_range_match.group(1)),
+                    'max': int(hr_range_match.group(2))
+                }
+            else:
+                # Pattern 2: HR cap/max (cap 135 or max 135)
+                hr_cap_match = re.search(r'hr\s+(?:cap|max)\s+(\d+)\s*bpm', line, re.IGNORECASE)
+                if hr_cap_match:
+                    line_hr_targets[idx] = {
+                        'max': int(hr_cap_match.group(1))
+                    }
 
         # Filter out metadata patterns within lines (Target:, Notes:, Name:, etc.)
-        # Use regex to remove these patterns while preserving workout instructions
-        lines = text.split('\n')
         filtered_lines = []
-        for line in lines:
+        for idx, line in enumerate(lines):
             # Skip lines that are just "Name: ..." (shouldn't happen, but safety check)
             if re.match(r'name:\s*', line, re.IGNORECASE):
                 continue
 
             # Remove metadata patterns more aggressively using sentence boundaries
-            # Match "Target: ... ." or "Target: ... " up to next major keyword
             line = re.sub(r'target:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
             line = re.sub(r'notes:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
             line = re.sub(r'expect:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
@@ -118,20 +137,24 @@ class WorkoutParser:
 
             line = line.strip()
             if line:
-                filtered_lines.append(line)
+                # Store tuple of (line_text, hr_target)
+                hr_target = line_hr_targets.get(idx)
+                filtered_lines.append((line, hr_target))
 
         # Process each line separately (newlines separate major steps)
         # Then also split each line by commas/semicolons for inline multiple steps
         all_parts = []
-        for line in filtered_lines:
-            line = line.strip()
-            if not line:
+        for line_text, hr_target in filtered_lines:
+            line_text = line_text.strip()
+            if not line_text:
                 continue
             # Split each line by commas, semicolons, or "then"
-            line_parts = re.split(r'[,;]|\bthen\b', line)
-            all_parts.extend(line_parts)
+            line_parts = re.split(r'[,;]|\bthen\b', line_text)
+            # Associate HR target with all parts from this line (typically just one step per line)
+            for part in line_parts:
+                all_parts.append((part, hr_target))
 
-        for part in all_parts:
+        for part, hr_target in all_parts:
             part = part.strip()
             if not part:
                 continue
@@ -148,7 +171,9 @@ class WorkoutParser:
                 for inner_part in inner_parts:
                     inner_part = inner_part.strip()
                     if inner_part:
-                        step = self._parse_single_step(inner_part)
+                        # Extract HR target from inner part if present
+                        inner_hr = self._extract_hr_from_text(inner_part)
+                        step = self._parse_single_step(inner_part, inner_hr)
                         if step:
                             inner_steps.append(step)
 
@@ -174,14 +199,32 @@ class WorkoutParser:
                 })
                 continue
 
-            # Parse individual step
-            step = self._parse_single_step(part)
+            # Parse individual step with HR target
+            step = self._parse_single_step(part, hr_target)
             if step:
                 steps.append(step)
 
         return steps
-    
-    def _parse_single_step(self, text: str):
+
+    def _extract_hr_from_text(self, text: str):
+        """Extract HR target from text fragment"""
+        # Look for HR targets like "HR 120-140 bpm" or "HR cap 135 bpm"
+        hr_range_match = re.search(r'hr\s+(\d+)\s*[-–]\s*(\d+)\s*bpm', text, re.IGNORECASE)
+        if hr_range_match:
+            return {
+                'min': int(hr_range_match.group(1)),
+                'max': int(hr_range_match.group(2))
+            }
+
+        hr_cap_match = re.search(r'hr\s+(?:cap|max)\s+(\d+)\s*bpm', text, re.IGNORECASE)
+        if hr_cap_match:
+            return {
+                'max': int(hr_cap_match.group(1))
+            }
+
+        return None
+
+    def _parse_single_step(self, text: str, hr_target=None):
         """Parse a single step like '10 min warmup' or '800m @ 5k pace'"""
 
         # Determine intensity/step type
@@ -213,6 +256,7 @@ class WorkoutParser:
                     'displayable': True
                 },
                 'end_condition_value': total_seconds,
+                'hr_target': hr_target,
             }
 
         # Parse seconds (like "20 seconds", "100 sec")
@@ -229,6 +273,7 @@ class WorkoutParser:
                     'displayable': True
                 },
                 'end_condition_value': int(seconds),
+                'hr_target': hr_target,
             }
 
         # Parse duration - time based (minutes)
@@ -245,6 +290,7 @@ class WorkoutParser:
                     'displayable': True
                 },
                 'end_condition_value': int(minutes * 60),  # seconds
+                'hr_target': hr_target,
             }
 
         # Parse duration - distance based
@@ -271,6 +317,7 @@ class WorkoutParser:
                     'displayable': True
                 },
                 'end_condition_value': meters,  # meters (not centimeters!)
+                'hr_target': hr_target,
             }
 
         # If we can't parse any duration or distance, return None to filter out metadata
@@ -301,6 +348,34 @@ class WorkoutParser:
 
         else:
             # Create ExecutableStepDTO matching Garmin's exact format
+            # Set target type based on HR target presence
+            hr_target = step_data.get('hr_target')
+
+            if hr_target:
+                # HR target present - use heart rate target type
+                target_type = {
+                    "workoutTargetTypeId": 4,
+                    "workoutTargetTypeKey": "heart.rate.zone",
+                    "displayOrder": 4
+                }
+                # HR values are in bpm
+                target_value_one = hr_target.get('min')  # Lower bound (may be None)
+                target_value_two = hr_target.get('max')  # Upper bound
+
+                # If only max is specified, set min to 0
+                if target_value_one is None and target_value_two:
+                    target_value_one = 0
+
+            else:
+                # No target - default
+                target_type = {
+                    "workoutTargetTypeId": 1,
+                    "workoutTargetTypeKey": "no.target",
+                    "displayOrder": 1
+                }
+                target_value_one = None
+                target_value_two = None
+
             step = {
                 "type": "ExecutableStepDTO",
                 "stepId": None,
@@ -312,13 +387,9 @@ class WorkoutParser:
                 "endConditionValue": step_data['end_condition_value'],
                 "preferredEndConditionUnit": None,
                 "endConditionCompare": None,
-                "targetType": {
-                    "workoutTargetTypeId": 1,
-                    "workoutTargetTypeKey": "no.target",
-                    "displayOrder": 1
-                },
-                "targetValueOne": None,
-                "targetValueTwo": None,
+                "targetType": target_type,
+                "targetValueOne": target_value_one,
+                "targetValueTwo": target_value_two,
                 "targetValueUnit": None,
                 "zoneNumber": None,
                 "secondaryTargetType": None,
