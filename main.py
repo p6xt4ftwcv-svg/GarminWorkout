@@ -139,10 +139,12 @@ class WorkoutParser:
         for idx in range(len(line_info)):
             if not line_info[idx]['has_workout'] and line_info[idx]['hr_target']:
                 # Metadata-only line with HR target - apply to previous workout line
+                print(f"DEBUG: Line {idx} has HR target but no workout: {line_info[idx]['hr_target']}")
                 for prev_idx in range(idx - 1, -1, -1):
                     if line_info[prev_idx]['has_workout']:
                         if not line_info[prev_idx]['hr_target']:
                             line_info[prev_idx]['hr_target'] = line_info[idx]['hr_target']
+                            print(f"DEBUG: Applied HR target to line {prev_idx}: {line_info[idx]['hr_target']}")
                         break
 
         # Build parts list from workout lines
@@ -355,9 +357,11 @@ class WorkoutParser:
             # Create ExecutableStepDTO matching Garmin's exact format
             # Set target type based on HR target presence
             hr_target = step_data.get('hr_target')
+            print(f"DEBUG _create_step: HR target = {hr_target}")
 
             if hr_target:
                 # HR target present - use heart rate target type
+                print(f"DEBUG: Creating step with HR target: min={hr_target.get('min')}, max={hr_target.get('max')}")
                 target_type = {
                     "workoutTargetTypeId": 4,
                     "workoutTargetTypeKey": "heart.rate.zone",
@@ -370,6 +374,7 @@ class WorkoutParser:
                 # If only max is specified, set min to 0
                 if target_value_one is None and target_value_two:
                     target_value_one = 0
+                    print(f"DEBUG: Only max specified, setting min to 0")
 
             else:
                 # No target - default
