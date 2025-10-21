@@ -45,17 +45,26 @@ class WorkoutParser:
     def parse(self, text: str, custom_name: str = None) -> dict:
         """Parse workout text into Garmin workout JSON"""
 
-        # Use custom name if provided, otherwise use the workout text itself
+        # Use custom name if provided, otherwise check for "Name:" line, otherwise use first line
         if custom_name:
             workout_name = custom_name
         else:
-            # For multi-line workouts, use just the first line as the name
-            first_line = text.strip().split('\n')[0].strip()
-            # Remove em-dashes and clean up
-            workout_name = first_line.replace('—', '-').capitalize()
-            # Limit length to avoid overly long names
-            if len(workout_name) > 50:
-                workout_name = workout_name[:47] + "..."
+            # Check if the first line starts with "Name:"
+            lines = text.strip().split('\n')
+            first_line = lines[0].strip()
+
+            name_match = re.match(r'name:\s*(.+)', first_line, re.IGNORECASE)
+            if name_match:
+                # Extract the custom name from "Name: ..."
+                workout_name = name_match.group(1).strip()
+                # Remove the "Name:" line from text so it doesn't get parsed as a step
+                text = '\n'.join(lines[1:])
+            else:
+                # For multi-line workouts, use just the first line as the name
+                workout_name = first_line.replace('—', '-').capitalize()
+                # Limit length to avoid overly long names
+                if len(workout_name) > 50:
+                    workout_name = workout_name[:47] + "..."
 
         # Create workout structure with all required fields
         workout = {
@@ -89,11 +98,15 @@ class WorkoutParser:
         steps = []
         text = text.lower()
 
-        # Filter out metadata patterns within lines (Target:, Notes:, etc.)
+        # Filter out metadata patterns within lines (Target:, Notes:, Name:, etc.)
         # Use regex to remove these patterns while preserving workout instructions
         lines = text.split('\n')
         filtered_lines = []
         for line in lines:
+            # Skip lines that are just "Name: ..." (shouldn't happen, but safety check)
+            if re.match(r'name:\s*', line, re.IGNORECASE):
+                continue
+
             # Remove metadata patterns more aggressively using sentence boundaries
             # Match "Target: ... ." or "Target: ... " up to next major keyword
             line = re.sub(r'target:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
