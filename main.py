@@ -98,59 +98,64 @@ class WorkoutParser:
         steps = []
         text_lower = text.lower()
 
-        # First pass: Extract HR targets from each line before filtering
-        # Store as: {line_index: {'min': X, 'max': Y}} or {'max': Y}
+        # First pass: Extract HR targets and identify workout vs metadata lines
         lines = text_lower.split('\n')
-        line_hr_targets = {}
+        line_info = []
 
         for idx, line in enumerate(lines):
-            # Look for HR targets like "HR 120-140 bpm" or "HR cap 135 bpm"
-            # Pattern 1: HR range (120-140 or 120–140 with em-dash)
+            # Extract HR target
+            hr_target = None
             hr_range_match = re.search(r'hr\s+(\d+)\s*[-–]\s*(\d+)\s*bpm', line, re.IGNORECASE)
             if hr_range_match:
-                line_hr_targets[idx] = {
+                hr_target = {
                     'min': int(hr_range_match.group(1)),
                     'max': int(hr_range_match.group(2))
                 }
             else:
-                # Pattern 2: HR cap/max (cap 135 or max 135)
                 hr_cap_match = re.search(r'hr\s+(?:cap|max)\s+(\d+)\s*bpm', line, re.IGNORECASE)
                 if hr_cap_match:
-                    line_hr_targets[idx] = {
+                    hr_target = {
                         'max': int(hr_cap_match.group(1))
                     }
 
-        # Filter out metadata patterns within lines (Target:, Notes:, Name:, etc.)
-        filtered_lines = []
-        for idx, line in enumerate(lines):
-            # Skip lines that are just "Name: ..." (shouldn't happen, but safety check)
-            if re.match(r'name:\s*', line, re.IGNORECASE):
+            # Check if line has workout content after metadata removal
+            test_line = line
+            if re.match(r'name:\s*', test_line, re.IGNORECASE):
                 continue
+            test_line = re.sub(r'target:\s*[^.!?]*[.!?]?\s*', '', test_line, flags=re.IGNORECASE)
+            test_line = re.sub(r'notes:\s*[^.!?]*[.!?]?\s*', '', test_line, flags=re.IGNORECASE)
+            test_line = re.sub(r'expect:\s*[^.!?]*[.!?]?\s*', '', test_line, flags=re.IGNORECASE)
+            test_line = re.sub(r'finish with\s*[^.!?]*[.!?]?\s*', '', test_line, flags=re.IGNORECASE)
+            test_line = re.sub(r'\([^)]*\)', '', test_line)
+            test_line = test_line.strip()
 
-            # Remove metadata patterns more aggressively using sentence boundaries
-            line = re.sub(r'target:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
-            line = re.sub(r'notes:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
-            line = re.sub(r'expect:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
-            line = re.sub(r'finish with\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
-            # Remove any parenthetical notes like "(conversational)" that remain
-            line = re.sub(r'\([^)]*\)', '', line)
+            line_info.append({
+                'cleaned': test_line,
+                'hr_target': hr_target,
+                'has_workout': bool(test_line)
+            })
 
-            line = line.strip()
-            if line:
-                # Store tuple of (line_text, hr_target)
-                hr_target = line_hr_targets.get(idx)
-                filtered_lines.append((line, hr_target))
+        # Associate HR targets: if line has no workout but has HR, apply to previous workout line
+        for idx in range(len(line_info)):
+            if not line_info[idx]['has_workout'] and line_info[idx]['hr_target']:
+                # Metadata-only line with HR target - apply to previous workout line
+                for prev_idx in range(idx - 1, -1, -1):
+                    if line_info[prev_idx]['has_workout']:
+                        if not line_info[prev_idx]['hr_target']:
+                            line_info[prev_idx]['hr_target'] = line_info[idx]['hr_target']
+                        break
 
-        # Process each line separately (newlines separate major steps)
-        # Then also split each line by commas/semicolons for inline multiple steps
+        # Build parts list from workout lines
         all_parts = []
-        for line_text, hr_target in filtered_lines:
-            line_text = line_text.strip()
-            if not line_text:
+        for info in line_info:
+            if not info['has_workout']:
                 continue
+
+            line_text = info['cleaned']
+            hr_target = info['hr_target']
+
             # Split each line by commas, semicolons, or "then"
             line_parts = re.split(r'[,;]|\bthen\b', line_text)
-            # Associate HR target with all parts from this line (typically just one step per line)
             for part in line_parts:
                 all_parts.append((part, hr_target))
 
