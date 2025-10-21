@@ -89,14 +89,23 @@ class WorkoutParser:
         steps = []
         text = text.lower()
 
-        # Filter out metadata lines (Target, Notes, etc.)
+        # Filter out metadata patterns within lines (Target:, Notes:, etc.)
+        # Use regex to remove these patterns while preserving workout instructions
         lines = text.split('\n')
         filtered_lines = []
         for line in lines:
-            # Skip lines that are just metadata
-            if line.strip().startswith(('target:', 'notes:', 'expect:', 'finish with')):
-                continue
-            filtered_lines.append(line)
+            # Remove metadata patterns more aggressively using sentence boundaries
+            # Match "Target: ... ." or "Target: ... " up to next major keyword
+            line = re.sub(r'target:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'notes:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'expect:\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
+            line = re.sub(r'finish with\s*[^.!?]*[.!?]?\s*', '', line, flags=re.IGNORECASE)
+            # Remove any parenthetical notes like "(conversational)" that remain
+            line = re.sub(r'\([^)]*\)', '', line)
+
+            line = line.strip()
+            if line:
+                filtered_lines.append(line)
 
         # Process each line separately (newlines separate major steps)
         # Then also split each line by commas/semicolons for inline multiple steps
@@ -114,8 +123,8 @@ class WorkoutParser:
             if not part:
                 continue
 
-            # Check for "Repeat X times:" pattern
-            repeat_match_times = re.match(r'repeat\s+(\d+)\s+times?\s*:\s*(.+)', part, re.IGNORECASE)
+            # Check for "Repeat X times:" pattern (use search, not match, to find it anywhere in the string)
+            repeat_match_times = re.search(r'repeat\s+(\d+)\s+times?\s*:\s*(.+)', part, re.IGNORECASE)
             if repeat_match_times:
                 repeats = int(repeat_match_times.group(1))
                 inner_text = repeat_match_times.group(2)
@@ -251,18 +260,9 @@ class WorkoutParser:
                 'end_condition_value': meters,  # meters (not centimeters!)
             }
 
-        # Default: 5 minutes if we can't parse
-        return {
-            'type': 'step',
-            'step_type': step_type,
-            'end_condition': {
-                'conditionTypeId': 2,
-                'conditionTypeKey': 'time',
-                'displayOrder': 2,
-                'displayable': True
-            },
-            'end_condition_value': 300,
-        }
+        # If we can't parse any duration or distance, return None to filter out metadata
+        # (Don't create default steps for unparseable text)
+        return None
     
     def _create_step(self, order: int, step_data: dict) -> dict:
         """Create Garmin workout step JSON matching exact API format"""
