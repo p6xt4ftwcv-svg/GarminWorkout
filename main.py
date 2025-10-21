@@ -164,8 +164,32 @@ class WorkoutParser:
 
             # Split each line by commas, semicolons, or "then"
             line_parts = re.split(r'[,;]|\bthen\b', line_text)
-            for part in line_parts:
-                all_parts.append((part, hr_target))
+
+            # Process parts: if a part is just HR target, merge with previous part
+            processed_parts = []
+            for i, part in enumerate(line_parts):
+                part = part.strip()
+                if not part:
+                    continue
+
+                # Check if this part is JUST an HR target (no workout duration/distance)
+                part_hr = self._extract_hr_from_text(part)
+                # Remove HR from part to see if anything remains
+                part_no_hr = re.sub(r'hr\s+(?:cap|max|<)?\s*\d+\s*[-–]?\s*\d*\s*bpm', '', part, flags=re.IGNORECASE)
+                part_no_hr = part_no_hr.strip()
+
+                if part_hr and not part_no_hr:
+                    # This part is JUST an HR target - apply to previous part
+                    if processed_parts:
+                        prev_part, prev_hr = processed_parts[-1]
+                        # Replace previous with merged HR
+                        processed_parts[-1] = (prev_part, part_hr)
+                        print(f"DEBUG: Merged inline HR {part_hr} with previous part")
+                    continue
+
+                processed_parts.append((part, hr_target))
+
+            all_parts.extend(processed_parts)
 
         for part, hr_target in all_parts:
             part = part.strip()
