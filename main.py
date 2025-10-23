@@ -210,6 +210,13 @@ class WorkoutParser:
                     if inner_part:
                         # Extract HR target from inner part if present
                         inner_hr = self._extract_hr_from_text(inner_part)
+
+                        # If no HR found in inner part, but outer repeat line has HR target,
+                        # and there's only one substep (not 2a), 2b) pattern), use outer HR
+                        if not inner_hr and hr_target and len(inner_parts) == 1:
+                            inner_hr = hr_target
+                            print(f"DEBUG: Using outer HR target {hr_target} for inline repeat substep")
+
                         step = self._parse_single_step(inner_part, inner_hr)
                         if step:
                             inner_steps.append(step)
